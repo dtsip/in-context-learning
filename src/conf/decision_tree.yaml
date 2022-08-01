@@ -1,0 +1,17 @@
+inherit: 
+    - base.yaml
+
+training:
+    task: decision_tree
+    task_kwargs: {"depth": 4}
+    curriculum:
+        points:
+            start: 26
+            end: 101
+            inc: 5
+            interval: 2000
+
+out_dir: ../models/decision_tree
+
+wandb:
+    name: "decision_tree_standard"
