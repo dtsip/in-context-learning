@@ -1,0 +1,17 @@
+inherit: 
+    - base.yaml
+
+training:
+    task: relu_2nn_regression
+    task_kwargs: {"hidden_layer_size": 4}
+    curriculum:
+        points:
+            start: 26
+            end: 101
+            inc: 5
+            interval: 2000
+
+out_dir: ../models/relu_2nn_regression
+
+wandb:
+    name: "relu_2nn_regression_standard"

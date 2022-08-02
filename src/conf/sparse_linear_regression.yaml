@@ -1,0 +1,17 @@
+inherit: 
+    - base.yaml
+
+training:
+    task: sparse_linear_regression
+    task_kwargs: {"sparsity": 3}
+    curriculum:
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+
+out_dir: ../models/sparse_linear_regression
+
+wandb:
+    name: "sparse_regression_standard"

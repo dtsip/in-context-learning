@@ -1,0 +1,16 @@
+inherit: 
+    - base.yaml
+
+training:
+    task: linear_regression
+    curriculum:
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+
+out_dir: ../models/linear_regression
+
+wandb:
+    name: "linear_regression_standard"
