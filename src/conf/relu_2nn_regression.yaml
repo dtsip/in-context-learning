@@ -3,7 +3,7 @@ inherit:
 
 training:
     task: relu_2nn_regression
-    task_kwargs: {"hidden_layer_size": 4}
+    task_kwargs: {"hidden_layer_size": 100}
     curriculum:
         points:
             start: 26

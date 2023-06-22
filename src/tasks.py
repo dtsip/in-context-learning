@@ -216,7 +216,7 @@ class Relu2nnRegression(Task):
         pool_dict=None,
         seeds=None,
         scale=1,
-        hidden_layer_size=4,
+        hidden_layer_size=100,
     ):
         """scale: a constant by which to scale the randomly sampled weights."""
         super(Relu2nnRegression, self).__init__(n_dims, batch_size, pool_dict, seeds)
