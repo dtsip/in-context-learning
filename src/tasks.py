@@ -1,6 +1,7 @@
 import math
 
 import torch
+import random
 
 
 def squared_error(ys_pred, ys):
@@ -57,6 +58,7 @@ def get_task_sampler(
         "sparse_linear_regression": SparseLinearRegression,
         "linear_classification": LinearClassification,
         "noisy_linear_regression": NoisyLinearRegression,
+        "outliers_linear_regression": OutliersLinearRegression,
         "quadratic_regression": QuadraticRegression,
         "relu_2nn_regression": Relu2nnRegression,
         "decision_tree": DecisionTree,
@@ -195,6 +197,42 @@ class NoisyLinearRegression(LinearRegression):
             ys_b_noisy = ys_b_noisy * math.sqrt(self.n_dims) / ys_b_noisy.std()
 
         return ys_b_noisy
+    
+
+class OutliersLinearRegression(LinearRegression):
+    def __init__(
+        self,
+        n_dims,
+        batch_size,
+        pool_dict=None,
+        seeds=None,
+        scale=1,
+        noise_std=0,
+        renormalize_ys=False,
+        num_outliers=0  # 新增参数
+    ):
+        """noise_std: standard deviation of noise added to the prediction."""
+        super(OutliersLinearRegression, self).__init__(
+            n_dims, batch_size, pool_dict, seeds, scale
+        )
+        self.noise_std = noise_std
+        self.renormalize_ys = renormalize_ys
+        self.num_outliers = num_outliers  
+
+    def evaluate(self, xs_b):
+        ys_b = super().evaluate(xs_b)
+        ys_b_outliers = ys_b.clone()  
+
+        if self.num_outliers > 0 and self.noise_std != 0:
+            outliers_indices = torch.randperm(ys_b.nelement()-1)[:self.num_outliers]
+            ys_b_outliers.view(-1)[outliers_indices] += self.noise_std*random.randint(1, 10)
+
+ 
+        if self.renormalize_ys:
+            ys_b_outliers = ys_b_outliers * math.sqrt(self.n_dims) / ys_b_outliers.std()
+
+        return ys_b_outliers
+
 
 
 class QuadraticRegression(LinearRegression):

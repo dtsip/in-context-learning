@@ -130,6 +130,12 @@ def gen_overlapping_train_test(data_sampler, n_points, b_size):
 
     return xs_train_pre, xs_test_post
 
+def gen_outliers_train_test(data_sampler, n_points, b_size):
+    xs = data_sampler.sample_xs(n_points, b_size)
+    xs_train_pre = xs
+    xs_test_post = xs.clone()
+    return xs_train_pre, xs_test_post
+
 
 def aggregate_metrics(metrics, bootstrap_trials=1000):
     """
@@ -218,41 +224,54 @@ def build_evals(conf):
             evaluation_kwargs[name].update(kwargs)
         return evaluation_kwargs
 
-    for strategy in [
-        "random_quadrants",
-        "orthogonal_train_test",
-        "overlapping_train_test",
-    ]:
-        evaluation_kwargs[strategy] = {"prompting_strategy": strategy}
+    # for strategy in [
+    #     "random_quadrants",
+    #     "orthogonal_train_test",
+    #     "overlapping_train_test",
+    # ]:
+    #     evaluation_kwargs[strategy] = {"prompting_strategy": strategy}
 
-    for method in ["half_subspace", "skewed"]:
-        if "subspace" in method:
-            eigenvals = torch.zeros(n_dims)
-            eigenvals[: n_dims // 2] = 1
-        else:
-            eigenvals = 1 / (torch.arange(n_dims) + 1)
+    # for method in ["half_subspace", "skewed"]:
+    #     if "subspace" in method:
+    #         eigenvals = torch.zeros(n_dims)
+    #         eigenvals[: n_dims // 2] = 1
+    #     else:
+    #         eigenvals = 1 / (torch.arange(n_dims) + 1)
 
-        scale = sample_transformation(eigenvals, normalize=True)
-        evaluation_kwargs[f"{method}"] = {
-            "data_sampler_kwargs": {"scale": scale},
-        }
+    #     scale = sample_transformation(eigenvals, normalize=True)
+    #     evaluation_kwargs[f"{method}"] = {
+    #         "data_sampler_kwargs": {"scale": scale},
+    #     }
 
-    for dim in ["x", "y"]:
-        for scale in [0.333, 0.5, 2, 3]:
-            if dim == "x":
-                eigenvals = scale * torch.ones(n_dims)
-                t = sample_transformation(eigenvals)
-                scaling_args = {"data_sampler_kwargs": {"scale": t}}
-            else:
-                eigenvals = scale * torch.ones(n_dims)
-                scaling_args = {"task_sampler_kwargs": {"scale": scale}}
+    # for dim in ["x", "y"]:
+    #     for scale in [0.333, 0.5, 2, 3]:
+    #         if dim == "x":
+    #             eigenvals = scale * torch.ones(n_dims)
+    #             t = sample_transformation(eigenvals)
+    #             scaling_args = {"data_sampler_kwargs": {"scale": t}}
+    #         else:
+    #             eigenvals = scale * torch.ones(n_dims)
+    #             scaling_args = {"task_sampler_kwargs": {"scale": scale}}
 
-            evaluation_kwargs[f"scale-{dim}={scale}"] = scaling_args
+    #         evaluation_kwargs[f"scale-{dim}={scale}"] = scaling_args
 
-    evaluation_kwargs[f"noisyLR"] = {
-        "task_sampler_kwargs": {"renormalize_ys": True, "noise_std": 1},
-        "task_name": "noisy_linear_regression",
-    }
+    # evaluation_kwargs[f"noisyLR"] = {
+    #     "task_sampler_kwargs": {"renormalize_ys": True, "noise_std": 1},
+    #     "task_name": "noisy_linear_regression",
+    # }
+
+    for num_outliers in [0, 1, 2, 4, 8,16]:
+        for noise_std in [0.01, 0.1, 1, 10, 100]:
+            outlier_kwargs = {
+                "task_sampler_kwargs": {
+                    "num_outliers": num_outliers,
+                    "renormalize_ys":False,
+                    "noise_std": noise_std
+                },
+                "task_name": "outliers_linear_regression",
+                "prompting_strategy": "outliers_train_test",
+            }
+            evaluation_kwargs[f"outliers-{num_outliers}-{noise_std}"] = outlier_kwargs
 
     for name, kwargs in evaluation_kwargs.items():
         # allow kwargs to override base_kwargs values
