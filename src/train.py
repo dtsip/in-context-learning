@@ -22,6 +22,7 @@ torch.backends.cudnn.benchmark = True
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
     output = model(xs, ys)
+    # print(torch.max(xs))
     loss = loss_func(output, ys)
     loss.backward()
     optimizer.step()

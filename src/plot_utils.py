@@ -40,6 +40,9 @@ relevant_model_names = {
     "seq_relu_2nn": [
         "Transformer",
     ],
+    "seq_linear": [
+        "Transformer"
+    ]
 }
 
 

@@ -447,17 +447,19 @@ class RecursiveLinearFunction(Task):
 
         self.n_dims = n_dims
         self.sequence_length=10
-        self.scale = scale
+        self.scale = 1 / n_dims
 
         w = torch.randn((n_dims, n_dims))
 
         normalized_w = torch.nn.functional.normalize(w.clone())
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.5, min=-0.5)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.8, min=-0.8)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
-        self.w = clamped_matrix
+        self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
+
+        # print(torch.eig(self.w))
 
         self.functions = self.generate_functions()
 
