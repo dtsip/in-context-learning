@@ -20,9 +20,6 @@ def l2_error(ys_pred, ys):
     return (ys - ys_pred).norm(dim=2)
 
 def mean_l2_error(ys_pred, ys):
-    # print(ys_pred.shape)
-    # print(ys.shape)
-    # print((ys - ys_pred).norm(dim=2).mean().shape)
     return (ys - ys_pred).norm(dim=2).mean()
 
 
@@ -422,8 +419,6 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
             def func(xs_b):
                 W1 = self.ws[f"w{i},{0}"].to(xs_b.device)
                 W2 = self.ws[f"w{i},{1}"].to(xs_b.device)
-                # print(W1.shape, W2.shape)
-                # print(xs_b.shape)
                 # Renormalize to Linear Regression Scale
                 ys_b_nn = (torch.nn.functional.relu(xs_b @ W1) @ W2)
                 ys_b_nn = ys_b_nn * math.sqrt(2 / self.hidden_layer_size)
@@ -459,7 +454,7 @@ class RecursiveLinearFunction(Task):
         normalized_w = torch.nn.functional.normalize(w.clone())
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.5)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.5, min=-0.5)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
         self.w = clamped_matrix
@@ -491,8 +486,7 @@ class RecursiveLinearFunction(Task):
             ys[:, t - 1, :] = xs[:, t, :]
 
         # Update the last element in ys
-        ys[:, -1, :] = xs[:, -1, :]
-
+        ys[:, -1, :] = torch.matmul(xs[:, -1, :], W)
         return xs, ys
         
 

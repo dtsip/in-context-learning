@@ -21,11 +21,8 @@ torch.backends.cudnn.benchmark = True
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
-    print("max:", torch.max(xs))
     output = model(xs, ys)
     loss = loss_func(output, ys)
-    # print("HELLOOOO LOSS SHAPE")
-    # print(loss.shape)
     loss.backward()
     optimizer.step()
     return loss.detach().item(), output.detach()
@@ -88,8 +85,6 @@ def train(model, args, device):
         if "seq" in args.training.task:
             x0 = xs[:, 0, :]
             xs, ys = task.generate_sequence(x0)
-            # print("WAHEEE!!!!")
-            # print(xs, ys)
         else:
             ys = task.evaluate(xs)
 
