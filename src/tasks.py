@@ -2,6 +2,8 @@ import math
 
 import torch
 
+import itertools
+
 
 def squared_error(ys_pred, ys):
     return (ys - ys_pred).square()
@@ -60,6 +62,8 @@ def get_task_sampler(
         "quadratic_regression": QuadraticRegression,
         "relu_2nn_regression": Relu2nnRegression,
         "decision_tree": DecisionTree,
+        "seq_relu_2nn": RecursiveRelu2nn,
+        "seq_linear": RecursiveLinearFunction
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
@@ -342,3 +346,174 @@ class DecisionTree(Task):
     @staticmethod
     def get_training_metric():
         return mean_squared_error
+    
+class SlidingWindowSequentialTasks(Task):
+    def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None):
+        super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
+
+        # sliding_window=1
+        # sequence_length=32
+
+        # self.sliding_window = sliding_window
+        # self.sequence_length = sequence_length
+
+    def generate_functions(self, ws):
+        """
+        return a list of functions that each use w_i,j from ws
+
+        the function should have type (self.b_size, self.n_dims) --> (self.b_size, self.n_dims), as it will be used recursively
+        """
+        raise NotImplementedError
+    
+    def generate_sequence(self, x0):
+        """
+        Generate the sequence starting at x0 of length self.sequence_length, using self.functions and self.sliding_window
+        
+        x0 : (self.batch_size, self.n_dims)
+
+        Return a batch xs and ys to be used for training.
+        """
+        print(self.sequence_length, self.n_dims)
+        xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+        print("xs.shape:", xs.shape)
+        ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+        
+        xs[:, 0, :] = x0
+
+        # t = 1
+        # f 0 -> i 0
+        # t = 2 
+        # f 0 -> i 1, f 1 -> i 0
+        # t = 4, time 4 in sequence
+        # f 0 -> i 3, f 1 -> i 2, f 2  -> i 1,  f 3 -> i 0
+        for t in range(1, self.sequence_length):
+            x = torch.sum(torch.stack([f(xs[:, t - (i+1), :]) if t - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=1)
+            # i that was not affected by a functio
+            xs[:, t, :] = x
+            ys[:, t - 1, :] = xs[:, t, :]
+        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, self.sequence_length - (i+1), :]) if self.sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=1)
+
+        return xs, ys
+    
+class RecursiveRelu2nn(SlidingWindowSequentialTasks):
+    def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1, hidden_layer_size=100):
+        super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
+
+        self.sliding_window=1
+        self.sequence_length=10
+        
+        self.scale = scale
+        self.hidden_layer_size = hidden_layer_size
+
+        dims = [(n_dims, hidden_layer_size), (hidden_layer_size, n_dims)]
+        self.ws = {f"w{j},{i}" : torch.randn(dims[i]) for i, j in itertools.product(list(range(self.sliding_window + 1)), (range(2)))}
+        self.functions = self.generate_functions()
+
+    def generate_functions(self):
+        functions = []
+        for i in range(self.sliding_window + 1):
+            def func(xs_b):
+                W1 = self.ws[f"w{i},{0}"].to(xs_b.device)
+                W2 = self.ws[f"w{i},{1}"].to(xs_b.device)
+                # print(W1.shape, W2.shape)
+                # print(xs_b.shape)
+                # Renormalize to Linear Regression Scale
+                ys_b_nn = (torch.nn.functional.relu(xs_b @ W1) @ W2)
+                ys_b_nn = ys_b_nn * math.sqrt(2 / self.hidden_layer_size)
+                ys_b_nn = self.scale * ys_b_nn
+                #         ys_b_nn = ys_b_nn * math.sqrt(self.n_dims) / ys_b_nn.std()
+                return ys_b_nn
+            functions.append(func)
+        return functions
+
+    @staticmethod 
+    def generate_pool_dict(n_dims, num_tasks, sliding_window, hidden_layer_size, **kwargs):
+        dims = [(num_tasks, n_dims, hidden_layer_size), (num_tasks, hidden_layer_size, n_dims)]
+        return {f"w{i},{j}" : torch.randn(dims[i]) for i, j in zip(range(sliding_window), range(2))}
+    
+    @staticmethod
+    def get_metric():
+        return squared_error
+
+    @staticmethod
+    def get_training_metric():
+        return mean_squared_error
+    
+class RecursiveLinearFunction(Task):
+    def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
+        super(RecursiveLinearFunction, self).__init__(n_dims, batch_size, pool_dict, seeds)
+
+        self.n_dims = n_dims
+        self.sequence_length=10
+        self.scale = scale
+
+        self.w = torch.randn((n_dims, n_dims))
+        self.functions = self.generate_functions()
+
+    def generate_sequence(self, x0):
+        """
+        Generate the sequence starting at x0 of length self.sequence_length.
+        At each step, the previous vector is multiplied by the matrix W.
+
+        x0 : (self.batch_size, self.n_dims)
+        W : (self.n_dims, self.n_dims) matrix
+
+        Return a batch xs and ys to be used for training.
+        """
+        W = self.w
+        print(self.sequence_length, self.n_dims)
+        xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+        print("xs.shape:", xs.shape)
+        ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+
+        # Initialize the first step of the sequence
+        xs[:, 0, :] = x0
+
+        # Iterate over the sequence
+        for t in range(1, self.sequence_length):
+            # Multiply the previous step by the matrix W
+            xs[:, t, :] = torch.matmul(xs[:, t-1, :], W)
+            # Copy the new step to ys
+            ys[:, t - 1, :] = xs[:, t, :]
+
+        # Update the last element in ys
+        ys[:, -1, :] = xs[:, -1, :]
+
+        return xs, ys
+        
+
+    def generate_functions(self):
+        functions = []
+        def func(xs):
+            w = self.w
+            ys = self.scale * torch.stack([w @ xb for  xb in xs])
+            return ys
+        functions.append(func)
+        return functions
+
+    @staticmethod 
+    def generate_pool_dict(n_dims, num_tasks, sliding_window, hidden_layer_size, **kwargs):
+        dims = [(num_tasks, n_dims, hidden_layer_size), (num_tasks, hidden_layer_size, n_dims)]
+        return {f"w{i},{j}" : torch.randn(dims[i]) for i, j in zip(range(sliding_window), range(2))}
+    
+    @staticmethod
+    def get_metric():
+        return squared_error
+
+    @staticmethod
+    def get_training_metric():
+        return mean_squared_error
+
+def get_seq_task_sampler(
+    task_name, n_dims, batch_size, pool_dict=None, num_tasks=None, **kwargs
+):
+    # TODO: add functionality for pool_dict, but for now assume pool_dict=None
+    task_names_to_classes = {
+        "seq_relu_2nn": Relu2nnRegression,
+    }
+    if task_name in task_names_to_classes:
+        task_cls = task_names_to_classes[task_name]
+        return lambda **args: task_cls(n_dims, batch_size, pool_dict, **args, **kwargs)
+    else:
+        print("Unknown task")
+        raise NotImplementedError

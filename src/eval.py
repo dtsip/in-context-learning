@@ -14,7 +14,7 @@ from samplers import get_data_sampler, sample_transformation
 from tasks import get_task_sampler
 
 
-def get_model_from_run(run_path, step=-1, only_conf=False):
+def get_model_from_run(run_path, step=-1, only_conf=False, map_location=torch.device('cpu')):
     config_path = os.path.join(run_path, "config.yaml")
     with open(config_path) as fp:  # we don't Quinfig it to avoid inherits
         conf = Munch.fromDict(yaml.safe_load(fp))
@@ -25,7 +25,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 
     if step == -1:
         state_path = os.path.join(run_path, "state.pt")
-        state = torch.load(state_path)
+        state = torch.load(state_path, map_location=map_location)
         model.load_state_dict(state["model_state_dict"])
     else:
         model_path = os.path.join(run_path, f"model_{step}.pt")

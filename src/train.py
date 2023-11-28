@@ -21,6 +21,8 @@ torch.backends.cudnn.benchmark = True
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
+    # print(xs)
+    # print(ys)
     output = model(xs, ys)
     loss = loss_func(output, ys)
     loss.backward()
@@ -35,7 +37,7 @@ def sample_seeds(total_seeds, count):
     return seeds
 
 
-def train(model, args):
+def train(model, args, device):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.training.learning_rate)
     curriculum = Curriculum(args.training.curriculum)
 
@@ -82,15 +84,22 @@ def train(model, args):
             **data_sampler_args,
         )
         task = task_sampler(**task_sampler_args)
-        ys = task.evaluate(xs)
+        SEQ_RELU_2NN = True
+        if SEQ_RELU_2NN:
+            x0 = xs[:, 0, :]
+            xs, ys = task.generate_sequence(x0)
+            print("WAHEEE!!!!")
+            print(xs, ys)
+        else:
+            ys = task.evaluate(xs)
 
         loss_func = task.get_training_metric()
 
-        loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func)
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
-        point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
+        point_wise_loss = point_wise_loss_func(output, ys.to(device)).mean(dim=0)
 
         baseline_loss = (
             sum(
@@ -151,11 +160,13 @@ def main(args):
             resume=True,
         )
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     model = build_model(args.model)
-    model.cuda()
+    model.to(device)
     model.train()
 
-    train(model, args)
+    train(model, args, device)
 
     if not args.test_run:
         _ = get_run_metrics(args.out_dir)  # precompute metrics for eval
