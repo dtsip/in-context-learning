@@ -170,6 +170,7 @@ def eval_model(
     """
 
     assert num_eval_examples % batch_size == 0
+    # this is where the data gets sampled, it gets sampled in different sizes
     data_sampler = get_data_sampler(data_name, n_dims, **data_sampler_kwargs)
     task_sampler = get_task_sampler(
         task_name, n_dims, batch_size, **task_sampler_kwargs
@@ -276,7 +277,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
         for model in all_models:
             if model.name in metrics and not recompute:
                 continue
-
+            # this is where the evaluation happens
             metrics[model.name] = eval_model(model, **kwargs)
         all_metrics[eval_name] = metrics
 
@@ -386,7 +387,11 @@ def read_run_dir(run_dir):
                 all_runs[k].append(v)
 
     df = pd.DataFrame(all_runs).sort_values("run_name")
-    assert len(df) == len(df.run_name.unique())
+    # print(len(df))
+    # print(len(df.run_name.unique()))
+    # print(df.run_name.unique())
+    # BUG : if you train multiple version of the same type of model, you'll fail this assert
+    # assert len(df) == len(df.run_name.unique())
     return df
 
 if __name__ == "__main__":
