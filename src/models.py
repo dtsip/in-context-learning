@@ -113,6 +113,7 @@ class TransformerModel(nn.Module):
         # )
         zs = torch.stack((xs_b, ys_b), dim=2)
         zs = zs.view(bsize, 2 * points, dim)
+
         return zs
 
         # zs = torch.empty(xs_b.size(0), xs_b.size(1) + ys_b.size(1), xs_b.size(2), dtype=xs_b.dtype, device=xs_b.device)
