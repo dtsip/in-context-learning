@@ -37,6 +37,29 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 
 # Functions for evaluation
 
+def generate_random_ys(num_changes, num_total, y_dim):
+    """
+    Selects num_changes random indices from the range 0 to num_total - 1.
+
+    Args:
+    - num_total (int): Total number of indices.
+    - num_changes (int): Number of random indices to select.
+    - y_dim (int): Dimension of every y value
+
+    Returns:
+    - torch.Tensor: Tensor containing the selected random indices. (of length num_changes)
+    - torch.Tensor: Tensor containing the new random values at those indices
+    """
+
+    if num_changes > num_total:
+        raise ValueError("Number of changes cannot be greater than the total number.")
+    
+    # Generate random indices
+    random_indices = torch.randint(0, num_total, (num_changes,), dtype=torch.long)
+    indices_values = torch.rand((num_changes, y_dim))
+
+    return random_indices, indices_values
+
 
 def eval_batch(model, task_sampler, xs, xs_p=None):
     task = task_sampler()
@@ -61,6 +84,29 @@ def eval_batch(model, task_sampler, xs, xs_p=None):
 
     return metrics
 
+def eval_batch_random(model, task_sampler, xs, num_random, xs_p=None):
+    task = task_sampler()
+    if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
+        device = "cuda"
+    else:
+        device = "cpu"
+
+    if xs_p is None:
+        ys = task.evaluate(xs)
+        pred = model(xs.to(device), ys.to(device)).detach()
+        metrics = task.get_metric()(pred.cpu(), ys)
+    else:
+        b_size, n_points, _ = xs.shape
+        metrics = torch.zeros(b_size, n_points)
+        for i in range(n_points):
+            xs_comb = torch.cat((xs[:, :i, :], xs_p[:, i:, :]), dim=1)
+            ys = task.evaluate(xs_comb)
+            random_ys = generate_random_ys(num_random, ys.shape[0], ys.shape[1])
+
+            pred = model(xs_comb.to(device), random_ys.to(device), inds=[i]).detach() # type: ignore
+            metrics[:, i] = task.get_metric()(pred.cpu(), ys)[:, i]
+
+    return metrics
 
 # Functions for generating different kinds of train/test data
 
@@ -159,6 +205,7 @@ def eval_model(
     batch_size=64,
     data_sampler_kwargs={},
     task_sampler_kwargs={},
+    # random_ys = False
 ):
     """
     Evaluate a model on a task with a variety of strategies.
@@ -182,6 +229,10 @@ def eval_model(
     for i in range(num_eval_examples // batch_size):
         xs, xs_p = generating_func(data_sampler, n_points, batch_size)
 
+        # todo: implement the random_ys
+        # if (random_ys):
+        #     metrics = eval_batch_random(model, task)
+        # else:
         metrics = eval_batch(model, task_sampler, xs, xs_p)
         all_metrics.append(metrics)
 
@@ -263,7 +314,7 @@ def build_evals(conf):
     return evaluation_kwargs
 
 
-def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False):
+def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False, random_ys=False):
     try:
         with open(save_path) as fp:
             all_metrics = json.load(fp)
@@ -278,6 +329,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
             if model.name in metrics and not recompute:
                 continue
             # this is where the evaluation happens
+            # metrics[model.name] = eval_model(model, **kwargs, random_ys)
             metrics[model.name] = eval_model(model, **kwargs)
         all_metrics[eval_name] = metrics
 
@@ -289,7 +341,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
 
 
 def get_run_metrics(
-    run_path, step=-1, cache=True, skip_model_load=False, skip_baselines=False
+    run_path, step=-1, cache=True, skip_model_load=False, skip_baselines=False, random_ys=False
 ):
     if skip_model_load:
         _, conf = get_model_from_run(run_path, only_conf=True)
@@ -315,8 +367,8 @@ def get_run_metrics(
         cache_created = os.path.getmtime(save_path)
         if checkpoint_created > cache_created:
             recompute = True
-
-    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute)
+    
+    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute, random_ys)
     return all_metrics
 
 

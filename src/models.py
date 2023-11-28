@@ -112,7 +112,6 @@ class TransformerModel(nn.Module):
         zs = torch.stack((xs_b, ys_b_wide), dim=2)
         zs = zs.view(bsize, 2 * points, dim)
 
-        print(zs[0][19])
         return zs
 
     def forward(self, xs, ys, inds=None):
@@ -123,12 +122,10 @@ class TransformerModel(nn.Module):
             if max(inds) >= ys.shape[1] or min(inds) < 0:
                 raise ValueError("inds contain indices where xs and ys are not defined")
         zs = self._combine(xs, ys)
-        print(zs.shape)
-        # print(zs)
+
         embeds = self._read_in(zs)
         print(embeds.shape)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
-        print(output.shape)
         prediction = self._read_out(output)
         return prediction[:, ::2, 0][:, inds]  # predict only on xs
 
