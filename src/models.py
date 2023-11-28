@@ -11,7 +11,7 @@ import xgboost as xgb
 from base_models import NeuralNetwork, ParallelNetworks
 
 
-def build_model(conf):
+def build_model(conf, seq):
     if conf.family == "gpt2":
         model = TransformerModel(
             n_dims=conf.n_dims,
@@ -19,6 +19,7 @@ def build_model(conf):
             n_embd=conf.n_embd,
             n_layer=conf.n_layer,
             n_head=conf.n_head,
+            seq=seq
         )
     else:
         raise NotImplementedError
@@ -71,14 +72,15 @@ def get_relevant_baselines(task_name):
             (XGBoostModel, {}),
             (AveragingModel, {}),
         ],
+        "seq_linear": []
     }
 
     models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]
     return models
 
-
+SEQ = True
 class TransformerModel(nn.Module):
-    def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
+    def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4, seq=False):
         super(TransformerModel, self).__init__()
         configuration = GPT2Config(
             n_positions=2 * n_positions,
@@ -94,23 +96,26 @@ class TransformerModel(nn.Module):
 
         self.n_positions = n_positions
         self.n_dims = n_dims
-        print("n_dims:", n_dims)
-        print("n_embd:", n_embd)
         self._read_in = nn.Linear(n_dims, n_embd)
         self._backbone = GPT2Model(configuration)
-        self._read_out = nn.Linear(n_embd, n_dims)
+        self.seq = seq
+        if self.seq:
+            self._read_out = nn.Linear(n_embd, n_dims) 
+        else: 
+            self._read_out = nn.Linear(n_embd, 1)
 
     @staticmethod
-    def _combine(xs_b, ys_b):
+    def _combine(xs_b, ys_b, seq):
         """Interleaves the x's and the y's into a single sequence."""
         bsize, points, dim = xs_b.shape
-        # ys_b_wide = torch.cat(
-        #     (
-        #         ys_b.view(bsize, points, 1),
-        #         torch.zeros(bsize, points, dim - 1, device=ys_b.device),
-        #     ),
-        #     axis=2,
-        # )
+        if not seq:
+            ys_b = torch.cat(
+                (
+                    ys_b.view(bsize, points, 1),
+                    torch.zeros(bsize, points, dim - 1, device=ys_b.device),
+                ),
+                axis=2,
+            )
         zs = torch.stack((xs_b, ys_b), dim=2)
         zs = zs.view(bsize, 2 * points, dim)
 
@@ -129,14 +134,13 @@ class TransformerModel(nn.Module):
             inds = torch.tensor(inds)
             if max(inds) >= ys.shape[1] or min(inds) < 0:
                 raise ValueError("inds contain indices where xs and ys are not defined")
-        zs = self._combine(xs, ys)
-        print("zs.shape:", zs.shape)
+        zs = self._combine(xs, ys, self.seq)
+        # print("zs.shape:", zs.shape)
         embeds = self._read_in(zs)
-        print("embeds.shape:", embeds.shape)
+        # print("embeds.shape:", embeds.shape)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
         prediction = self._read_out(output)
-        # return prediction[:, ::2, 0][:, inds]  # predict only on xs
-        return prediction[:, ::2, :]
+        return prediction[:, ::2, :][:, inds]  # predict only on xs
 
 
 class NNModel:

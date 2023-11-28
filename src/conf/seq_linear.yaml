@@ -3,31 +3,31 @@ inherit:
     - wandb.yaml
 
 model:
-    n_dims: 1
+    n_dims: 2
     n_positions: 11
 
 training:
     task: seq_linear
     data: gaussian
     task_kwargs: {}
-    batch_size: 1
+    batch_size: 64
     learning_rate: 0.0001
-    save_every_steps: 1000
-    keep_every_steps: 100000
-    train_steps: 5001
+    save_every_steps: 500
+    keep_every_steps: 500
+    train_steps: 1000
     curriculum:
         dims:
-            start: 1
-            end: 1
+            start: 2
+            end: 2
             inc: 1
             interval: 2000
         points:
-            start: 11
-            end: 11
+            start: 4
+            end: 4
             inc: 2
             interval: 2000
 
-out_dir: ../models/seq_relu_2nn
+out_dir: ../models/seq_linear
 
 wandb:
-    name: "seq_relu_2nn"
+    name: "seq_linear"

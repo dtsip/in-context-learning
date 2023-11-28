@@ -21,7 +21,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False, map_location=torch.de
     if only_conf:
         return None, conf
 
-    model = models.build_model(conf.model)
+    model = models.build_model(conf.model, "seq" in conf.training.task)
 
     if step == -1:
         state_path = os.path.join(run_path, "state.pt")
@@ -61,7 +61,7 @@ def generate_random_ys(num_changes, num_total, y_dim):
     return random_indices, indices_values
 
 
-def eval_batch(model, task_sampler, xs, xs_p=None):
+def eval_batch(model, task_sampler, xs, xs_p=None, seq=False):
     task = task_sampler()
     if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
         device = "cuda"
@@ -69,14 +69,21 @@ def eval_batch(model, task_sampler, xs, xs_p=None):
         device = "cpu"
 
     if xs_p is None:
-        ys = task.evaluate(xs)
-        pred = model(xs.to(device), ys.to(device)).detach()
-        metrics = task.get_metric()(pred.cpu(), ys)
+        if not seq:
+            ys = task.evaluate(xs)
+            pred = model(xs.to(device), ys.to(device)).detach()
+            metrics = task.get_metric()(pred.cpu(), ys)
+        else:
+            x0 = xs[:, 0, :]
+            xs, ys = task.generate_sequence(x0)
+            pred = model(xs.to(device), ys.to(device)).detach()
+            metrics = task.get_metric()(pred.cpu(), ys)
     else:
         b_size, n_points, _ = xs.shape
         metrics = torch.zeros(b_size, n_points)
         for i in range(n_points):
             xs_comb = torch.cat((xs[:, :i, :], xs_p[:, i:, :]), dim=1)
+
             ys = task.evaluate(xs_comb)
 
             pred = model(xs_comb.to(device), ys.to(device), inds=[i]).detach()
@@ -205,6 +212,7 @@ def eval_model(
     batch_size=64,
     data_sampler_kwargs={},
     task_sampler_kwargs={},
+    seq=False
     # random_ys = False
 ):
     """
@@ -233,7 +241,7 @@ def eval_model(
         # if (random_ys):
         #     metrics = eval_batch_random(model, task)
         # else:
-        metrics = eval_batch(model, task_sampler, xs, xs_p)
+        metrics = eval_batch(model, task_sampler, xs, xs_p, seq)
         all_metrics.append(metrics)
 
     metrics = torch.cat(all_metrics, dim=0)
@@ -314,7 +322,7 @@ def build_evals(conf):
     return evaluation_kwargs
 
 
-def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False, random_ys=False):
+def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False, random_ys=False, seq=False):
     try:
         with open(save_path) as fp:
             all_metrics = json.load(fp)
@@ -330,7 +338,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
                 continue
             # this is where the evaluation happens
             # metrics[model.name] = eval_model(model, **kwargs, random_ys)
-            metrics[model.name] = eval_model(model, **kwargs)
+            metrics[model.name] = eval_model(model, seq=seq, **kwargs)
         all_metrics[eval_name] = metrics
 
     if save_path is not None:
@@ -348,7 +356,7 @@ def get_run_metrics(
         all_models = []
     else:
         model, conf = get_model_from_run(run_path, step)
-        model = model.cuda().eval()
+        model = model.to("cpu").eval()
         all_models = [model]
         if not skip_baselines:
             all_models += models.get_relevant_baselines(conf.training.task)
@@ -368,7 +376,7 @@ def get_run_metrics(
         if checkpoint_created > cache_created:
             recompute = True
     
-    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute, random_ys)
+    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute, random_ys, "seq" in conf.training.task)
     return all_metrics
 
 

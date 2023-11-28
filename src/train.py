@@ -21,10 +21,11 @@ torch.backends.cudnn.benchmark = True
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
-    # print(xs)
-    # print(ys)
+    print("max:", torch.max(xs))
     output = model(xs, ys)
     loss = loss_func(output, ys)
+    # print("HELLOOOO LOSS SHAPE")
+    # print(loss.shape)
     loss.backward()
     optimizer.step()
     return loss.detach().item(), output.detach()
@@ -84,12 +85,11 @@ def train(model, args, device):
             **data_sampler_args,
         )
         task = task_sampler(**task_sampler_args)
-        SEQ_RELU_2NN = True
-        if SEQ_RELU_2NN:
+        if "seq" in args.training.task:
             x0 = xs[:, 0, :]
             xs, ys = task.generate_sequence(x0)
-            print("WAHEEE!!!!")
-            print(xs, ys)
+            # print("WAHEEE!!!!")
+            # print(xs, ys)
         else:
             ys = task.evaluate(xs)
 
@@ -162,7 +162,7 @@ def main(args):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model = build_model(args.model)
+    model = build_model(args.model, "seq" in args.training.task)
     model.to(device)
     model.train()
 

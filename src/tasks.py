@@ -16,6 +16,15 @@ def mean_squared_error(ys_pred, ys):
 def accuracy(ys_pred, ys):
     return (ys == ys_pred.sign()).float()
 
+def l2_error(ys_pred, ys): 
+    return (ys - ys_pred).norm(dim=2)
+
+def mean_l2_error(ys_pred, ys):
+    # print(ys_pred.shape)
+    # print(ys.shape)
+    # print((ys - ys_pred).norm(dim=2).mean().shape)
+    return (ys - ys_pred).norm(dim=2).mean()
+
 
 sigmoid = torch.nn.Sigmoid()
 bce_loss = torch.nn.BCELoss()
@@ -373,9 +382,7 @@ class SlidingWindowSequentialTasks(Task):
 
         Return a batch xs and ys to be used for training.
         """
-        print(self.sequence_length, self.n_dims)
         xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
-        print("xs.shape:", xs.shape)
         ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
         
         xs[:, 0, :] = x0
@@ -447,7 +454,16 @@ class RecursiveLinearFunction(Task):
         self.sequence_length=10
         self.scale = scale
 
-        self.w = torch.randn((n_dims, n_dims))
+        w = torch.randn((n_dims, n_dims))
+
+        normalized_w = torch.nn.functional.normalize(w.clone())
+
+        eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.5)
+        clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
+
+        self.w = clamped_matrix
+
         self.functions = self.generate_functions()
 
     def generate_sequence(self, x0):
@@ -461,9 +477,7 @@ class RecursiveLinearFunction(Task):
         Return a batch xs and ys to be used for training.
         """
         W = self.w
-        print(self.sequence_length, self.n_dims)
         xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
-        print("xs.shape:", xs.shape)
         ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
 
         # Initialize the first step of the sequence
@@ -498,11 +512,11 @@ class RecursiveLinearFunction(Task):
     
     @staticmethod
     def get_metric():
-        return squared_error
+        return l2_error
 
     @staticmethod
     def get_training_metric():
-        return mean_squared_error
+        return mean_l2_error
 
 def get_seq_task_sampler(
     task_name, n_dims, batch_size, pool_dict=None, num_tasks=None, **kwargs
