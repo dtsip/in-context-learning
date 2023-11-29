@@ -366,12 +366,6 @@ class SlidingWindowSequentialTasks(Task):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
-        # sliding_window=1
-        # sequence_length=32
-
-        # self.sliding_window = sliding_window
-        # self.sequence_length = sequence_length
-
     def generate_functions(self, ws):
         """
         return a list of functions that each use w_i,j from ws
@@ -380,7 +374,7 @@ class SlidingWindowSequentialTasks(Task):
         """
         raise NotImplementedError
     
-    def generate_sequence(self, x0):
+    def generate_sequence(self, x0, sequence_length):
         """
         Generate the sequence starting at x0 of length self.sequence_length, using self.functions and self.sliding_window
         
@@ -388,8 +382,8 @@ class SlidingWindowSequentialTasks(Task):
 
         Return a batch xs and ys to be used for training.
         """
-        xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
-        ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+        xs = torch.zeros((self.b_size, sequence_length, self.n_dims))
+        ys = torch.zeros((self.b_size, sequence_length, self.n_dims))
         
         xs[:, 0, :] = x0
 
@@ -399,12 +393,12 @@ class SlidingWindowSequentialTasks(Task):
         # f 0 -> i 1, f 1 -> i 0
         # t = 4, time 4 in sequence
         # f 0 -> i 3, f 1 -> i 2, f 2  -> i 1,  f 3 -> i 0
-        for t in range(1, self.sequence_length):
+        for t in range(1, sequence_length):
             x = torch.sum(torch.stack([f(xs[:, t - (i+1), :]) if t - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
             # i that was not affected by a functio
             xs[:, t, :] = x
             ys[:, t - 1, :] = xs[:, t, :]
-        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, self.sequence_length - (i+1), :]) if self.sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
+        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, sequence_length - (i+1), :]) if sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
 
         return xs, ys
     
@@ -413,7 +407,7 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
         self.sliding_window=5
-        self.sequence_length=20
+        # self.sequence_length=20
         
         self.scale = scale
         self.hidden_layer_size = hidden_layer_size
@@ -460,7 +454,7 @@ class RecursiveLinearFunction(Task):
         super(RecursiveLinearFunction, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
         self.n_dims = n_dims
-        self.sequence_length=16
+        # self.sequence_length=16
         self.scale = 1 / n_dims
 
         w = torch.randn((n_dims, n_dims))
@@ -477,7 +471,7 @@ class RecursiveLinearFunction(Task):
 
         self.functions = self.generate_functions()
 
-    def generate_sequence(self, x0):
+    def generate_sequence(self, x0, sequence_length):
         """
         Generate the sequence starting at x0 of length self.sequence_length.
         At each step, the previous vector is multiplied by the matrix W.
@@ -488,14 +482,14 @@ class RecursiveLinearFunction(Task):
         Return a batch xs and ys to be used for training.
         """
         W = self.w
-        xs = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
-        ys = torch.zeros((self.b_size, self.sequence_length, self.n_dims))
+        xs = torch.zeros((self.b_size, sequence_length, self.n_dims))
+        ys = torch.zeros((self.b_size, sequence_length, self.n_dims))
 
         # Initialize the first step of the sequence
         xs[:, 0, :] = x0
 
         # Iterate over the sequence
-        for t in range(1, self.sequence_length):
+        for t in range(1, sequence_length):
             # Multiply the previous step by the matrix W
             xs[:, t, :] = torch.matmul(xs[:, t-1, :], W)
             # Copy the new step to ys

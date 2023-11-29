@@ -4,7 +4,7 @@ inherit:
 
 model:
     n_dims: 20
-    n_positions: 50
+    n_positions: 20
 
 training:
     task: seq_relu_2nn
@@ -22,8 +22,8 @@ training:
             inc: 1
             interval: 2000
         points:
-            start: 50
-            end: 50
+            start: 20
+            end: 20
             inc: 2
             interval: 2000
 

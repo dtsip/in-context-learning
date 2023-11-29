@@ -61,7 +61,7 @@ def generate_random_ys(num_changes, num_total, y_dim):
     return random_indices, indices_values
 
 
-def eval_batch(model, task_sampler, xs, xs_p=None, seq=False):
+def eval_batch(model, task_sampler, xs, xs_p=None, seq=False, n_positions=101):
     task = task_sampler()
     if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
         device = "cuda"
@@ -75,7 +75,7 @@ def eval_batch(model, task_sampler, xs, xs_p=None, seq=False):
             metrics = task.get_metric()(pred.cpu(), ys)
         else:
             x0 = xs[:, 0, :]
-            xs, ys = task.generate_sequence(x0)
+            xs, ys = task.generate_sequence(x0, n_positions)
             pred = model(xs.to(device), ys.to(device)).detach()
             metrics = task.get_metric()(pred.cpu(), ys)
     else:
@@ -212,8 +212,9 @@ def eval_model(
     batch_size=64,
     data_sampler_kwargs={},
     task_sampler_kwargs={},
-    seq=False
+    seq=False,
     # random_ys = False
+    n_positions=101
 ):
     """
     Evaluate a model on a task with a variety of strategies.
@@ -241,7 +242,7 @@ def eval_model(
         # if (random_ys):
         #     metrics = eval_batch_random(model, task)
         # else:
-        metrics = eval_batch(model, task_sampler, xs, xs_p, seq)
+        metrics = eval_batch(model, task_sampler, xs, xs_p, seq, n_positions)
         all_metrics.append(metrics)
 
     metrics = torch.cat(all_metrics, dim=0)
@@ -322,7 +323,7 @@ def build_evals(conf):
     return evaluation_kwargs
 
 
-def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False, random_ys=False, seq=False):
+def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False, random_ys=False, seq=False, n_positions=101):
     try:
         with open(save_path) as fp:
             all_metrics = json.load(fp)
@@ -338,7 +339,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
                 continue
             # this is where the evaluation happens
             # metrics[model.name] = eval_model(model, **kwargs, random_ys)
-            metrics[model.name] = eval_model(model, seq=seq, **kwargs)
+            metrics[model.name] = eval_model(model, seq=seq, n_positions=n_positions **kwargs)
         all_metrics[eval_name] = metrics
 
     if save_path is not None:
@@ -376,7 +377,7 @@ def get_run_metrics(
         if checkpoint_created > cache_created:
             recompute = True
     
-    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute, random_ys, "seq" in conf.training.task)
+    all_metrics = compute_evals(all_models, evaluation_kwargs, save_path, recompute, random_ys, "seq" in conf.training.task, conf.model.n_positions)
     return all_metrics
 
 

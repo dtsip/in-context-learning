@@ -85,7 +85,7 @@ def train(model, args, device):
         task = task_sampler(**task_sampler_args)
         if "seq" in args.training.task:
             x0 = xs[:, 0, :]
-            xs, ys = task.generate_sequence(x0)
+            xs, ys = task.generate_sequence(x0, args.model.n_positions)
         else:
             ys = task.evaluate(xs)
 
