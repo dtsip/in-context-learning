@@ -22,6 +22,15 @@ def l2_error(ys_pred, ys):
 def mean_l2_error(ys_pred, ys):
     return (ys - ys_pred).norm(dim=2).mean()
 
+def normalized_l2_error(ys_pred, ys):
+    normalized_ys = ys / ys.norm(dim=2, keepdim=True)
+    normalized_ys_pred = ys_pred / ys.norm(dim=2, keepdim=True)
+    return (normalized_ys - normalized_ys_pred).norm(dim=2)
+
+def normalized_mean_l2_error(ys_pred, ys):
+    normalized_ys = ys / ys.norm(dim=2, keepdim=True)
+    normalized_ys_pred = ys_pred / ys.norm(dim=2, keepdim=True)
+    return (normalized_ys - normalized_ys_pred).norm(dim=2).mean()
 
 sigmoid = torch.nn.Sigmoid()
 bce_loss = torch.nn.BCELoss()
@@ -391,11 +400,11 @@ class SlidingWindowSequentialTasks(Task):
         # t = 4, time 4 in sequence
         # f 0 -> i 3, f 1 -> i 2, f 2  -> i 1,  f 3 -> i 0
         for t in range(1, self.sequence_length):
-            x = torch.sum(torch.stack([f(xs[:, t - (i+1), :]) if t - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=1)
+            x = torch.sum(torch.stack([f(xs[:, t - (i+1), :]) if t - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
             # i that was not affected by a functio
             xs[:, t, :] = x
             ys[:, t - 1, :] = xs[:, t, :]
-        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, self.sequence_length - (i+1), :]) if self.sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=1)
+        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, self.sequence_length - (i+1), :]) if self.sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
 
         return xs, ys
     
@@ -403,29 +412,34 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1, hidden_layer_size=100):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
-        self.sliding_window=1
-        self.sequence_length=10
+        self.sliding_window=5
+        self.sequence_length=20
         
         self.scale = scale
         self.hidden_layer_size = hidden_layer_size
 
         dims = [(n_dims, hidden_layer_size), (hidden_layer_size, n_dims)]
-        self.ws = {f"w{j},{i}" : torch.randn(dims[i]) for i, j in itertools.product(list(range(self.sliding_window + 1)), (range(2)))}
+        self.ws = {f"w{i},{j}" : torch.randn(dims[j]) for i, j in itertools.product(list(range(self.sliding_window + 1)), (range(2)))}
         self.functions = self.generate_functions()
 
     def generate_functions(self):
         functions = []
-        for i in range(self.sliding_window + 1):
-            def func(xs_b):
-                W1 = self.ws[f"w{i},{0}"].to(xs_b.device)
-                W2 = self.ws[f"w{i},{1}"].to(xs_b.device)
-                # Renormalize to Linear Regression Scale
-                ys_b_nn = (torch.nn.functional.relu(xs_b @ W1) @ W2)
-                ys_b_nn = ys_b_nn * math.sqrt(2 / self.hidden_layer_size)
-                ys_b_nn = self.scale * ys_b_nn
-                #         ys_b_nn = ys_b_nn * math.sqrt(self.n_dims) / ys_b_nn.std()
-                return ys_b_nn
-            functions.append(func)
+        for i in range(self.sliding_window):
+            functions.append(lambda xs_b: (torch.nn.functional.relu(xs_b @ self.ws[f"w{i},{0}"].to(xs_b.device)) @ self.ws[f"w{i},{1}"].to(xs_b.device)) * math.sqrt(2 / self.hidden_layer_size) * self.scale)
+            # def func(xs_b):
+            #     print(i)
+            #     W1 = self.ws[f"w{i},{0}"].to(xs_b.device)
+            #     W2 = self.ws[f"w{i},{1}"].to(xs_b.device)
+            #     # Renormalize to Linear Regression Scale
+            #     # print("xs_b.shape:", xs_b.shape)
+            #     # print("W1.shape:", W1.shape)
+            #     # print("W2.shape:", W2.shape)
+            #     ys_b_nn = (torch.nn.functional.relu(xs_b @ W1) @ W2)
+            #     ys_b_nn = ys_b_nn * math.sqrt(2 / self.hidden_layer_size)
+            #     ys_b_nn = self.scale * ys_b_nn
+            #     #         ys_b_nn = ys_b_nn * math.sqrt(self.n_dims) / ys_b_nn.std()
+            #     return ys_b_nn
+            # functions.append(func)
         return functions
 
     @staticmethod 
@@ -435,18 +449,18 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
     
     @staticmethod
     def get_metric():
-        return squared_error
+        return normalized_l2_error
 
     @staticmethod
     def get_training_metric():
-        return mean_squared_error
+        return normalized_mean_l2_error
     
 class RecursiveLinearFunction(Task):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
         super(RecursiveLinearFunction, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
         self.n_dims = n_dims
-        self.sequence_length=10
+        self.sequence_length=16
         self.scale = 1 / n_dims
 
         w = torch.randn((n_dims, n_dims))
@@ -454,7 +468,7 @@ class RecursiveLinearFunction(Task):
         normalized_w = torch.nn.functional.normalize(w.clone())
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=0.8, min=-0.8)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
         self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
@@ -508,11 +522,11 @@ class RecursiveLinearFunction(Task):
     
     @staticmethod
     def get_metric():
-        return l2_error
+        return normalized_l2_error
 
     @staticmethod
     def get_training_metric():
-        return mean_l2_error
+        return normalized_mean_l2_error
 
 def get_seq_task_sampler(
     task_name, n_dims, batch_size, pool_dict=None, num_tasks=None, **kwargs

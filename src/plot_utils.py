@@ -38,7 +38,7 @@ relevant_model_names = {
         "2-layer NN, GD",
     ],
     "seq_relu_2nn": [
-        "Transformer",
+        "Transformer"
     ],
     "seq_linear": [
         "Transformer"
@@ -48,6 +48,8 @@ relevant_model_names = {
 
 def basic_plot(metrics, models=None, trivial=1.0):
     fig, ax = plt.subplots(1, 1)
+
+    print(metrics)
 
     if models is not None:
         metrics = {k: metrics[k] for k in models}
@@ -84,6 +86,7 @@ def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=
 
         print(r.run_name, r.run_id)
         metrics = get_run_metrics(run_path, skip_model_load=True)
+        print("metrics:", metrics)
 
         for eval_name, results in sorted(metrics.items()):
             processed_results = {}

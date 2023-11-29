@@ -72,7 +72,8 @@ def get_relevant_baselines(task_name):
             (XGBoostModel, {}),
             (AveragingModel, {}),
         ],
-        "seq_linear": []
+        "seq_linear": [],
+        "seq_relu_2nn": []
     }
 
     models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]

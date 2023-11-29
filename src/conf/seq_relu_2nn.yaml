@@ -3,8 +3,8 @@ inherit:
     - wandb.yaml
 
 model:
-    n_dims: 5
-    n_positions: 11
+    n_dims: 20
+    n_positions: 50
 
 training:
     task: seq_relu_2nn
@@ -14,16 +14,16 @@ training:
     learning_rate: 0.0001
     save_every_steps: 1000
     keep_every_steps: 100000
-    train_steps: 5001
+    train_steps: 50001
     curriculum:
         dims:
-            start: 5
-            end: 5
+            start: 20
+            end: 20
             inc: 1
             interval: 2000
         points:
-            start: 11
-            end: 11
+            start: 50
+            end: 50
             inc: 2
             interval: 2000
 
