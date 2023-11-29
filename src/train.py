@@ -184,3 +184,7 @@ if __name__ == "__main__":
             yaml.dump(args.__dict__, yaml_file, default_flow_style=False)
 
     main(args)
+    import pickle
+
+    with open(f"log.pkl", "wb") as f:
+        pickle.dump(LOG, f)
