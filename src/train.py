@@ -18,6 +18,9 @@ import wandb
 
 torch.backends.cudnn.benchmark = True
 
+LOG = []
+def log(info: dict, step: int):
+    LOG.append((info, step))
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
@@ -101,7 +104,7 @@ def train(model, args):
         )
 
         if i % args.wandb.log_every_steps == 0 and not args.test_run:
-            wandb.log(
+            log(
                 {
                     "overall_loss": loss,
                     "excess_loss": loss / baseline_loss,
@@ -135,21 +138,21 @@ def train(model, args):
 
 
 def main(args):
-    if args.test_run:
-        curriculum_args = args.training.curriculum
-        curriculum_args.points.start = curriculum_args.points.end
-        curriculum_args.dims.start = curriculum_args.dims.end
-        args.training.train_steps = 100
-    else:
-        wandb.init(
-            dir=args.out_dir,
-            project=args.wandb.project,
-            entity=args.wandb.entity,
-            config=args.__dict__,
-            notes=args.wandb.notes,
-            name=args.wandb.name,
-            resume=True,
-        )
+    # if args.test_run:
+    curriculum_args = args.training.curriculum
+    curriculum_args.points.start = curriculum_args.points.end
+    curriculum_args.dims.start = curriculum_args.dims.end
+    args.training.train_steps = 100
+    # else:
+    #     wandb.init(
+    #         dir=args.out_dir,
+    #         project=args.wandb.project,
+    #         entity=args.wandb.entity,
+    #         config=args.__dict__,
+    #         notes=args.wandb.notes,
+    #         name=args.wandb.name,
+    #         resume=True,
+    #     )
 
     model = build_model(args.model)
     model.cuda()
