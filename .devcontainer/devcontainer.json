@@ -1,0 +1,13 @@
+{
+  "image": "mcr.microsoft.com/vscode/devcontainers/anaconda:3",
+  "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "GitHub.codespaces",
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    }
+}
