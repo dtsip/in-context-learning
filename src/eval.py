@@ -339,7 +339,7 @@ def compute_evals(all_models, evaluation_kwargs, save_path=None, recompute=False
                 continue
             # this is where the evaluation happens
             # metrics[model.name] = eval_model(model, **kwargs, random_ys)
-            metrics[model.name] = eval_model(model, seq=seq, n_positions=n_positions **kwargs)
+            metrics[model.name] = eval_model(model, seq=seq, n_positions=n_positions, **kwargs)
         all_metrics[eval_name] = metrics
 
     if save_path is not None:

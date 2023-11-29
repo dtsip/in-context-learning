@@ -73,7 +73,8 @@ def get_relevant_baselines(task_name):
             (AveragingModel, {}),
         ],
         "seq_linear": [],
-        "seq_relu_2nn": []
+        "seq_relu_2nn": [], 
+        "seq_rec_linear": []
     }
 
     models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]
