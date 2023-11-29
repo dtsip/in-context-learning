@@ -78,7 +78,8 @@ def get_task_sampler(
         "relu_2nn_regression": Relu2nnRegression,
         "decision_tree": DecisionTree,
         "seq_relu_2nn": RecursiveRelu2nn,
-        "seq_linear": RecursiveLinearFunction
+        "seq_linear": RecursiveLinearFunction, 
+        "seq_rec_linear": SequentialRecursiveLinearFunction
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
@@ -420,20 +421,6 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
         functions = []
         for i in range(self.sliding_window):
             functions.append(lambda xs_b: (torch.nn.functional.relu(xs_b @ self.ws[f"w{i},{0}"].to(xs_b.device)) @ self.ws[f"w{i},{1}"].to(xs_b.device)) * math.sqrt(2 / self.hidden_layer_size) * self.scale)
-            # def func(xs_b):
-            #     print(i)
-            #     W1 = self.ws[f"w{i},{0}"].to(xs_b.device)
-            #     W2 = self.ws[f"w{i},{1}"].to(xs_b.device)
-            #     # Renormalize to Linear Regression Scale
-            #     # print("xs_b.shape:", xs_b.shape)
-            #     # print("W1.shape:", W1.shape)
-            #     # print("W2.shape:", W2.shape)
-            #     ys_b_nn = (torch.nn.functional.relu(xs_b @ W1) @ W2)
-            #     ys_b_nn = ys_b_nn * math.sqrt(2 / self.hidden_layer_size)
-            #     ys_b_nn = self.scale * ys_b_nn
-            #     #         ys_b_nn = ys_b_nn * math.sqrt(self.n_dims) / ys_b_nn.std()
-            #     return ys_b_nn
-            # functions.append(func)
         return functions
 
     @staticmethod 
@@ -458,8 +445,6 @@ class RecursiveLinearFunction(Task):
         self.scale = 1 / n_dims
 
         w = torch.randn((n_dims, n_dims))
-
-        normalized_w = torch.nn.functional.normalize(w.clone())
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
         clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
@@ -499,6 +484,44 @@ class RecursiveLinearFunction(Task):
         ys[:, -1, :] = torch.matmul(xs[:, -1, :], W)
         return xs, ys
         
+
+    def generate_functions(self):
+        functions = []
+        def func(xs):
+            w = self.w
+            ys = self.scale * torch.stack([w @ xb for  xb in xs])
+            return ys
+        functions.append(func)
+        return functions
+
+    @staticmethod 
+    def generate_pool_dict(n_dims, num_tasks, sliding_window, hidden_layer_size, **kwargs):
+        dims = [(num_tasks, n_dims, hidden_layer_size), (num_tasks, hidden_layer_size, n_dims)]
+        return {f"w{i},{j}" : torch.randn(dims[i]) for i, j in zip(range(sliding_window), range(2))}
+    
+    @staticmethod
+    def get_metric():
+        return normalized_l2_error
+
+    @staticmethod
+    def get_training_metric():
+        return normalized_mean_l2_error
+
+class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
+    def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
+        super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
+
+        self.n_dims = n_dims
+        self.scale = 1 / n_dims
+
+        w = torch.randn((n_dims, n_dims))
+
+        eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
+        clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
+
+        self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
+        self.functions = self.generate_functions() 
 
     def generate_functions(self):
         functions = []

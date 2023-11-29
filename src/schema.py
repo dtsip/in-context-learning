@@ -41,7 +41,8 @@ TASK_LIST = [
     "relu_2nn_regression",
     "decision_tree",
     "seq_relu_2nn",
-    "seq_linear"
+    "seq_linear", 
+    "seq_rec_linear"
 ]
 
 training_schema = {

@@ -42,6 +42,9 @@ relevant_model_names = {
     ],
     "seq_linear": [
         "Transformer"
+    ], 
+    "seq_rec_linear": [
+        "Transformer"
     ]
 }
 
