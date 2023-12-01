@@ -1,0 +1,20 @@
+inherit: 
+    - base.yaml
+
+model:
+    family: relu_attn
+
+training:
+    task: relu_2nn_regression
+    task_kwargs: {"hidden_layer_size": 100}
+    curriculum:
+        points:
+            start: 26
+            end: 101
+            inc: 5
+            interval: 2000
+
+out_dir: ../models/relu_2nn_regression_relu_attn
+
+wandb:
+    name: "relu_2nn_regression_standard"

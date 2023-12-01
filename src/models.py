@@ -20,6 +20,14 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
+    elif conf.family == "relu_attn":
+        model = TransformerRelu(
+            n_dims=conf.n_dims,
+            n_positions=conf.n_positions,
+            n_embd=conf.n_embd,
+            n_layer=conf.n_layer,
+            n_head=conf.n_head,
+        )
     else:
         raise NotImplementedError
 
@@ -126,6 +134,53 @@ class TransformerModel(nn.Module):
         prediction = self._read_out(output)
         return prediction[:, ::2, 0][:, inds]  # predict only on xs
 
+def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
+    attn_weights = torch.matmul(query, key.transpose(-1, -2))
+
+    if self.scale_attn_weights:
+        attn_weights = attn_weights / (value.size(-1) ** 0.5)
+
+    # Layer-wise attention scaling
+    if self.scale_attn_by_inverse_layer_idx:
+        attn_weights = attn_weights / float(self.layer_idx + 1)
+
+    if not self.is_cross_attention:
+        # if only "normal" attention layer implements causal mask
+        query_length, key_length = query.size(-2), key.size(-2)
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
+
+    if attention_mask is not None:
+        # Apply the attention mask
+        attn_weights = attn_weights + attention_mask
+
+    attn_weights = nn.functional.relu(attn_weights, dim=-1) / query.size(-2)
+
+    # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
+    attn_weights = attn_weights.type(value.dtype)
+    attn_weights = self.attn_dropout(attn_weights)
+
+    # Mask heads if we want to
+    if head_mask is not None:
+        attn_weights = attn_weights * head_mask
+
+    attn_output = torch.matmul(attn_weights, value)
+
+    return attn_output, attn_weights
+
+class TransformerRelu(TransformerModel):
+    def __init__(self, *args, **kwargs):
+        super(TransformerRelu, self).__init__(*args, **kwargs)
+
+        # Override the attention mechanism with one that replaces softmax with ReLU
+        attn_layers = list(self._backbone.children())[3]
+        attn_module_class = list(attn_layers[0].children())[1].__class__
+
+        for i in range(len(attn_layers)):
+            list(attn_layers[i].children())[1]._attn = relu_attn.__get__(
+                list(attn_layers[i].children())[1],
+                attn_module_class
+            )
 
 class NNModel:
     def __init__(self, n_neighbors, weights="uniform"):
@@ -322,7 +377,7 @@ class GDModel:
         # prediction made at all indices by default.
         # xs: bsize X npoints X ndim.
         # ys: bsize X npoints.
-        xs, ys = xs.cuda(), ys.cuda()
+        # xs, ys = xs.cuda(), ys.cuda()
 
         if inds is None:
             inds = range(ys.shape[1])
@@ -338,7 +393,7 @@ class GDModel:
             model = ParallelNetworks(
                 ys.shape[0], self.model_class, **self.model_class_args
             )
-            model.cuda()
+            # model.cuda()
             if i > 0:
                 pred = torch.zeros_like(ys[:, 0])
 

@@ -14,7 +14,6 @@ from curriculum import Curriculum
 from schema import schema
 from models import build_model
 
-import wandb
 
 torch.backends.cudnn.benchmark = True
 
@@ -24,10 +23,12 @@ def log(info: dict, step: int):
 
 def train_step(model, xs, ys, optimizer, loss_func):
     optimizer.zero_grad()
+    model.train()
     output = model(xs, ys)
     loss = loss_func(output, ys)
     loss.backward()
     optimizer.step()
+    model.eval()
     return loss.detach().item(), output.detach()
 
 
@@ -89,11 +90,13 @@ def train(model, args):
 
         loss_func = task.get_training_metric()
 
-        loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        # loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
+        loss, output = train_step(model, xs, ys, optimizer, loss_func)
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
-        point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
+        # point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
+        point_wise_loss = point_wise_loss_func(output, ys).mean(dim=0)
 
         baseline_loss = (
             sum(
@@ -139,10 +142,10 @@ def train(model, args):
 
 def main(args):
     # if args.test_run:
-    curriculum_args = args.training.curriculum
-    curriculum_args.points.start = curriculum_args.points.end
-    curriculum_args.dims.start = curriculum_args.dims.end
-    args.training.train_steps = 100
+    #     curriculum_args = args.training.curriculum
+    #     curriculum_args.points.start = curriculum_args.points.end
+    #     curriculum_args.dims.start = curriculum_args.dims.end
+    #     args.training.train_steps = 100
     # else:
     #     wandb.init(
     #         dir=args.out_dir,
@@ -155,7 +158,7 @@ def main(args):
     #     )
 
     model = build_model(args.model)
-    model.cuda()
+    # model.cuda()
     model.train()
 
     train(model, args)
@@ -167,7 +170,7 @@ def main(args):
 if __name__ == "__main__":
     parser = QuinineArgumentParser(schema=schema)
     args = parser.parse_quinfig()
-    assert args.model.family in ["gpt2", "lstm"]
+    # assert args.model.family in ["gpt2", "lstm"]
     print(f"Running with: {args}")
 
     if not args.test_run:
