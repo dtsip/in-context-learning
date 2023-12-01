@@ -156,7 +156,7 @@ def main(args):
     #     )
 
     model = build_model(args.model)
-    # model.cuda()
+    model.to(DEVICE)
     model.train()
 
     train(model, args)
