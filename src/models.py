@@ -10,6 +10,8 @@ import xgboost as xgb
 
 from base_models import NeuralNetwork, ParallelNetworks
 
+from consts import DEVICE
+
 
 def build_model(conf):
     if conf.family == "gpt2":
@@ -99,6 +101,7 @@ class TransformerModel(nn.Module):
             use_cache=False,
         )
         self.name = f"gpt2_embd={n_embd}_layer={n_layer}_head={n_head}"
+        self.sequence_model = True
 
         self.n_positions = n_positions
         self.n_dims = n_dims
@@ -188,6 +191,7 @@ class NNModel:
         self.n_neighbors = n_neighbors
         self.weights = weights
         self.name = f"NN_n={n_neighbors}_{weights}"
+        self.sequence_model = False
 
     def __call__(self, xs, ys, inds=None):
         if inds is None:
@@ -230,6 +234,7 @@ class LeastSquaresModel:
     def __init__(self, driver=None):
         self.driver = driver
         self.name = f"OLS_driver={driver}"
+        self.sequence_model = False
 
     def __call__(self, xs, ys, inds=None):
         xs, ys = xs.cpu(), ys.cpu()
@@ -261,6 +266,7 @@ class LeastSquaresModel:
 class AveragingModel:
     def __init__(self):
         self.name = "averaging"
+        self.sequence_model = False
 
     def __call__(self, xs, ys, inds=None):
         if inds is None:
@@ -294,6 +300,7 @@ class LassoModel:
         self.alpha = alpha
         self.max_iter = max_iter
         self.name = f"lasso_alpha={alpha}_max_iter={max_iter}"
+        self.sequence_model = False
 
     # inds is a list containing indices where we want the prediction.
     # prediction made at all indices by default.
@@ -371,13 +378,14 @@ class GDModel:
         self.loss_name = loss_name
 
         self.name = f"gd_model_class={model_class}_model_class_args={model_class_args}_opt_alg={opt_alg}_lr={lr}_batch_size={batch_size}_num_steps={num_steps}_loss_name={loss_name}"
+        self.sequence_model = False
 
     def __call__(self, xs, ys, inds=None, verbose=False, print_step=100):
         # inds is a list containing indices where we want the prediction.
         # prediction made at all indices by default.
         # xs: bsize X npoints X ndim.
         # ys: bsize X npoints.
-        # xs, ys = xs.cuda(), ys.cuda()
+        xs, ys = xs.to(DEVICE), ys.to(DEVICE)
 
         if inds is None:
             inds = range(ys.shape[1])
@@ -393,7 +401,7 @@ class GDModel:
             model = ParallelNetworks(
                 ys.shape[0], self.model_class, **self.model_class_args
             )
-            # model.cuda()
+            model.to(DEVICE)
             if i > 0:
                 pred = torch.zeros_like(ys[:, 0])
 
@@ -459,6 +467,7 @@ class DecisionTreeModel:
     def __init__(self, max_depth=None):
         self.max_depth = max_depth
         self.name = f"decision_tree_max_depth={max_depth}"
+        self.sequence_model = False
 
     # inds is a list containing indices where we want the prediction.
     # prediction made at all indices by default.
@@ -497,6 +506,7 @@ class DecisionTreeModel:
 class XGBoostModel:
     def __init__(self):
         self.name = "xgboost"
+        self.sequence_model = False
 
     # inds is a list containing indices where we want the prediction.
     # prediction made at all indices by default.

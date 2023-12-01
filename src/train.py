@@ -13,7 +13,7 @@ from samplers import get_data_sampler
 from curriculum import Curriculum
 from schema import schema
 from models import build_model
-
+from consts import *
 
 torch.backends.cudnn.benchmark = True
 
@@ -90,13 +90,11 @@ def train(model, args):
 
         loss_func = task.get_training_metric()
 
-        # loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
-        loss, output = train_step(model, xs, ys, optimizer, loss_func)
+        loss, output = train_step(model, xs.to(DEVICE), ys.to(DEVICE), optimizer, loss_func)
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
-        # point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
-        point_wise_loss = point_wise_loss_func(output, ys).mean(dim=0)
+        point_wise_loss = point_wise_loss_func(output, ys.to(DEVICE)).mean(dim=0)
 
         baseline_loss = (
             sum(
@@ -170,7 +168,7 @@ def main(args):
 if __name__ == "__main__":
     parser = QuinineArgumentParser(schema=schema)
     args = parser.parse_quinfig()
-    # assert args.model.family in ["gpt2", "lstm"]
+    assert args.model.family in SEQ_MODELS
     print(f"Running with: {args}")
 
     if not args.test_run:

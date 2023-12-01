@@ -12,7 +12,7 @@ import yaml
 import models
 from samplers import get_data_sampler, sample_transformation
 from tasks import get_task_sampler
-
+from consts import DEVICE
 
 def get_model_from_run(run_path, step=-1, only_conf=False):
     config_path = os.path.join(run_path, "config.yaml")
@@ -40,10 +40,8 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 
 def eval_batch(model, task_sampler, xs, xs_p=None):
     task = task_sampler()
-    if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
-        device = "cuda"
-    else:
-        device = "cpu"
+
+    device = DEVICE if model.sequence_model else "cpu"
 
     if xs_p is None:
         ys = task.evaluate(xs)
@@ -295,8 +293,7 @@ def get_run_metrics(
         all_models = []
     else:
         model, conf = get_model_from_run(run_path, step)
-        # model = model.cuda().eval()
-        model = model.eval()
+        model = model.to(DEVICE).eval()
         all_models = [model]
         if not skip_baselines:
             all_models += models.get_relevant_baselines(conf.training.task)
