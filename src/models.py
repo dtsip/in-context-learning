@@ -154,7 +154,7 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
         # Apply the attention mask
         attn_weights = attn_weights + attention_mask
 
-    attn_weights = nn.functional.relu(attn_weights, dim=-1) / query.size(-2)
+    attn_weights = nn.functional.relu(attn_weights) / query.size(-2)
 
     # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
     attn_weights = attn_weights.type(value.dtype)
