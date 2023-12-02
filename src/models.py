@@ -30,6 +30,15 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
+    elif conf.family == "nystrom":
+        ## update when done
+        model = TransformerNystrom(
+            n_dims=conf.n_dims,
+            n_positions=conf.n_positions,
+            n_embd=conf.n_embd,
+            n_layer=conf.n_layer,
+            n_head=conf.n_head,
+        )
     else:
         raise NotImplementedError
 
@@ -171,7 +180,74 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
 
     return attn_output, attn_weights
 
+
+
+def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m = 2):
+    q_bar = query[:,:m]
+    k_bar = key[:,:m]
+
+    a_s = torch.matmul(q_bar, k_bar.transpose(-1, -2))
+
+    """attn_weights = torch.matmul(query, key.transpose(-1, -2))
+
+    if self.scale_attn_weights:
+        attn_weights = attn_weights / (value.size(-1) ** 0.5)
+
+    # Layer-wise attention scaling
+    if self.scale_attn_by_inverse_layer_idx:
+        attn_weights = attn_weights / float(self.layer_idx + 1)
+
+    if not self.is_cross_attention:
+        # if only "normal" attention layer implements causal mask
+        query_length, key_length = query.size(-2), key.size(-2)
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
+
+    if attention_mask is not None:
+        # Apply the attention mask
+        attn_weights = attn_weights + attention_mask"""
+
+    # need to swap softmax for approx method
+    left_weights = torch.matmul(query, k_bar.transpose(-1, -2))
+    left = nn.functional.softmax(left_weights/(value.size(-1) ** 0.5))
+
+    middle_weights = torch.matmul(q_bar, k_bar.transpose(-1, -2))
+    middle = nn.functional.softmax(middle_weights/(value.size(-1) ** 0.5))
+    # may have to modify this to use iterated method from paper instead of torch
+    inv = torch.linalg.pinv(middle)
+    
+    right_weights = torch.matmul(q_bar, key.transpose(-1,-2))
+    right = nn.functional.softmax(right_weights/(value.size(-1) ** 0.5))
+
+    attn_weights = torch.matmul(left,torch.matmul(inv, right))#nn.functional.relu(attn_weights) / query.size(-2)
+
+    # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
+    attn_weights = attn_weights.type(value.dtype)
+    attn_weights = self.attn_dropout(attn_weights)
+
+    # Mask heads if we want to
+    if head_mask is not None:
+        attn_weights = attn_weights * head_mask
+
+    attn_output = torch.matmul(attn_weights, value)
+
+    return attn_output, attn_weights
+
 class TransformerRelu(TransformerModel):
+    def __init__(self, *args, **kwargs):
+        super(TransformerRelu, self).__init__(*args, **kwargs)
+
+        # Override the attention mechanism with one that replaces softmax with ReLU
+        attn_layers = list(self._backbone.children())[3]
+        attn_module_class = list(attn_layers[0].children())[1].__class__
+
+        for i in range(len(attn_layers)):
+            list(attn_layers[i].children())[1]._attn = relu_attn.__get__(
+                list(attn_layers[i].children())[1],
+                attn_module_class
+            )
+
+class TransformerNystrom(TransformerModel):
     def __init__(self, *args, **kwargs):
         super(TransformerRelu, self).__init__(*args, **kwargs)
 
