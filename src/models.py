@@ -8,6 +8,7 @@ import warnings
 from sklearn import tree
 import xgboost as xgb
 import math
+from torch import nn, einsum
 
 from base_models import NeuralNetwork, ParallelNetworks
 
@@ -181,12 +182,18 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
 
     return attn_output, attn_weights
 
-# needs more work, need to figure out how to instantiate
 # used in nystrom_attn
-# iteratively finds the MP inverse
+# iteratively finds the Moore-Penrose inverse
+# work-in-progress
 def pinv(a_s):
-    current_z = a_s
-    next_z = pinv_next(a_s, a_s)
+    abs_x = torch.abs(a_s)
+    col = abs_x.sum(dim = -1)
+    row = abs_x.sum(dim = -2)
+
+    # Need to double check this initialization, doesn't seem to have right size
+    current_z = a_s.transpose(-1, -2) / (torch.max(col) * torch.max(row))
+    next_z = pinv_next(a_s, current_z)
+
     while(not torch.eq(current_z, next_z)):
         current_z = next_z
         next_z = pinv_next(a_s, current_z)
@@ -213,62 +220,25 @@ def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m
     # seem to be the right dimensions
     # needs better landmark selection instead of just grabbing the first m
     q_bar = segmented_means(query, m)#query[:,:,:m]
-    k_bar = segmented_means(query, m)#key[:,:,:m]
+    k_bar = segmented_means(key, m)#key[:,:,:m]
 
-    a_s = torch.matmul(q_bar, k_bar.transpose(-1, -2))
+    # this was taken directly from the nystrom paper
+    einops_eq = '... i d, ... j d -> ... i j'
+    sim1 = einsum(einops_eq, query, k_bar)
+    sim2 = einsum(einops_eq, q_bar, k_bar)
+    sim3 = einsum(einops_eq, q_bar, key)
 
-    # need to go over this stuff to figure out how they interact with nystrom
-    """attn_weights = torch.matmul(query, key.transpose(-1, -2))
+    # this was also taken from the nystrom paper, but modified
+    attn1, attn2, attn3 = map(lambda t: t.softmax(dim = -1), (sim1, sim2, sim3))
+    attn2_inv = torch.linalg.pinv(attn2)
+    attn_weights = attn1 @ attn2_inv @ attn3
 
-    if self.scale_attn_weights:
-        attn_weights = attn_weights / (value.size(-1) ** 0.5)
-
-    # Layer-wise attention scaling
-    if self.scale_attn_by_inverse_layer_idx:
-        attn_weights = attn_weights / float(self.layer_idx + 1)
-
-    if not self.is_cross_attention:
-        # if only "normal" attention layer implements causal mask
-        query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
-        attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
-
-    if attention_mask is not None:
-        # Apply the attention mask
-        attn_weights = attn_weights + attention_mask"""
-
-    # main nystrom code
-    left_weights = torch.matmul(query, k_bar.transpose(-1, -2))
-    left = nn.functional.softmax(left_weights/(value.size(-1) ** 0.5))
-
-    middle = nn.functional.softmax(a_s/(value.size(-1) ** 0.5))
-    # true pseudo-inverse is not efficient,
-    # working on using iterated method from paper instead of torch
-    try:
-        temp = torch.linalg.pinv(middle)
-    except:
-        print(q_bar)
-        print(k_bar)
-        print(middle)
-    inv = torch.linalg.pinv(middle)
-    # work-in-progress to use iterated method
-    #inv = pinv(a_s)
-    
-    right_weights = torch.matmul(q_bar, key.transpose(-1,-2))
-    right = nn.functional.softmax(right_weights/(value.size(-1) ** 0.5))
-
-    attn_weights = torch.matmul(left,torch.matmul(inv, right))#nn.functional.relu(attn_weights) / query.size(-2)
-
-    # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
     attn_weights = attn_weights.type(value.dtype)
     attn_weights = self.attn_dropout(attn_weights)
 
-    # Mask heads if we want to
-    if head_mask is not None:
-        attn_weights = attn_weights * head_mask
-
+    # uses weights to calculate output
     attn_output = torch.matmul(attn_weights, value)
-
+    
     return attn_output, attn_weights
 
 class TransformerRelu(TransformerModel):
