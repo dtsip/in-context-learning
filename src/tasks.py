@@ -6,10 +6,15 @@ import itertools
 
 
 def squared_error(ys_pred, ys):
+    ys_pred = ys_pred.squeeze()
     return (ys - ys_pred).square()
 
 
 def mean_squared_error(ys_pred, ys):
+    print(ys.shape)
+    ys_pred = ys_pred.squeeze()
+    print(ys_pred.shape)
+
     return (ys - ys_pred).square().mean()
 
 
