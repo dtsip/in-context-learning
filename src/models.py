@@ -212,13 +212,11 @@ def pinv_next(a_s, z):
 def segmented_means(matrix, m = 2):
     dim3 = matrix.shape[2] #this is the dim we downsample
     pooler = nn.AvgPool2d((math.ceil(dim3/m), 1), ceil_mode = True)
-    #print(pooler(matrix))
     return pooler(matrix)
 
 # m must be much smaller than dimension, we should probably decide on an m
 def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m = 2):
-    # seem to be the right dimensions
-    # needs better landmark selection instead of just grabbing the first m
+    # landmarking
     q_bar = segmented_means(query, m)#query[:,:,:m]
     k_bar = segmented_means(key, m)#key[:,:,:m]
 
