@@ -7,6 +7,7 @@ from sklearn.linear_model import LogisticRegression, Lasso
 import warnings
 from sklearn import tree
 import xgboost as xgb
+import math
 
 from base_models import NeuralNetwork, ParallelNetworks
 
@@ -180,13 +181,36 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
 
     return attn_output, attn_weights
 
+# needs more work, need to figure out how to instantiate
+# used in nystrom_attn
+def pinv(a_s):
+    current_z = a_s
+    next_z = pinv_next(a_s, a_s)
+    while(not torch.eq(current_z, next_z)):
+        current_z = next_z
+        next_z = pinv_next(a_s, current_z)
+    return next_z
 
+def pinv_next(a_s, z):
+    dim = a_s.shape[0]
+    i = torch.eye(dim)
+    inner = 7*i-torch.matmul(a_s,z)
+    inner = 15 * i - torch.matmul(torch.matmul(a_s, z), inner)
+    inner = 13 * i - torch.matmul(torch.matmul(a_s, z), inner)
+    return 1/4*torch.matmul(z, inner)
 
+def segmented_means(matrix, m = 2):
+    dim3 = matrix.shape[2] #this is the dim we downsample
+    pooler = nn.AvgPool2d((math.ceil(dim3/m), 1), ceil_mode = True)
+    #print(pooler(matrix))
+    return pooler(matrix)
+
+# m must be much smaller than dimension
 def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m = 2):
-    # i think these are the right dimensions?
-    # may want to look into randomizing instead of just grabbing the first m
-    q_bar = query[:,:,:m]
-    k_bar = key[:,:,:m]
+    # seem to be the right dimensions
+    # needs better landmark selection instead of just grabbing the first m
+    q_bar = segmented_means(query, m)#query[:,:,:m]
+    k_bar = segmented_means(query, m)#key[:,:,:m]
 
     a_s = torch.matmul(q_bar, k_bar.transpose(-1, -2))
 
@@ -214,11 +238,12 @@ def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m
     left_weights = torch.matmul(query, k_bar.transpose(-1, -2))
     left = nn.functional.softmax(left_weights/(value.size(-1) ** 0.5))
 
-    middle_weights = torch.matmul(q_bar, k_bar.transpose(-1, -2))
-    middle = nn.functional.softmax(middle_weights/(value.size(-1) ** 0.5))
+    middle = nn.functional.softmax(a_s/(value.size(-1) ** 0.5))
     # true pseudo-inverse is not efficient,
-    # may have to modify this to use iterated method from paper instead of torch
+    # working on using iterated method from paper instead of torch
     inv = torch.linalg.pinv(middle)
+    # work-in-progress to use iterated method
+    #inv = pinv(a_s)
     
     right_weights = torch.matmul(q_bar, key.transpose(-1,-2))
     right = nn.functional.softmax(right_weights/(value.size(-1) ** 0.5))
