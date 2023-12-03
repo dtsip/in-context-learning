@@ -183,11 +183,14 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
 
 
 def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m = 2):
-    q_bar = query[:,:m]
-    k_bar = key[:,:m]
+    # i think these are the right dimensions?
+    # may want to look into randomizing instead of just grabbing the first m
+    q_bar = query[:,:,:m]
+    k_bar = key[:,:,:m]
 
     a_s = torch.matmul(q_bar, k_bar.transpose(-1, -2))
 
+    # need to go over this stuff to figure out how they interact with nystrom
     """attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
     if self.scale_attn_weights:
@@ -207,12 +210,13 @@ def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m
         # Apply the attention mask
         attn_weights = attn_weights + attention_mask"""
 
-    # need to swap softmax for approx method
+    # main nystrom code
     left_weights = torch.matmul(query, k_bar.transpose(-1, -2))
     left = nn.functional.softmax(left_weights/(value.size(-1) ** 0.5))
 
     middle_weights = torch.matmul(q_bar, k_bar.transpose(-1, -2))
     middle = nn.functional.softmax(middle_weights/(value.size(-1) ** 0.5))
+    # true pseudo-inverse is not efficient,
     # may have to modify this to use iterated method from paper instead of torch
     inv = torch.linalg.pinv(middle)
     
@@ -249,14 +253,14 @@ class TransformerRelu(TransformerModel):
 
 class TransformerNystrom(TransformerModel):
     def __init__(self, *args, **kwargs):
-        super(TransformerRelu, self).__init__(*args, **kwargs)
+        super(TransformerNystrom, self).__init__(*args, **kwargs)
 
         # Override the attention mechanism with one that replaces softmax with ReLU
         attn_layers = list(self._backbone.children())[3]
         attn_module_class = list(attn_layers[0].children())[1].__class__
 
         for i in range(len(attn_layers)):
-            list(attn_layers[i].children())[1]._attn = relu_attn.__get__(
+            list(attn_layers[i].children())[1]._attn = nystrom_attn.__get__(
                 list(attn_layers[i].children())[1],
                 attn_module_class
             )
