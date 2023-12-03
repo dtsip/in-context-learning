@@ -183,6 +183,7 @@ def relu_attn(self, query, key, value, attention_mask=None, head_mask=None):
 
 # needs more work, need to figure out how to instantiate
 # used in nystrom_attn
+# iteratively finds the MP inverse
 def pinv(a_s):
     current_z = a_s
     next_z = pinv_next(a_s, a_s)
@@ -191,6 +192,7 @@ def pinv(a_s):
         next_z = pinv_next(a_s, current_z)
     return next_z
 
+# helper function for pinv
 def pinv_next(a_s, z):
     dim = a_s.shape[0]
     i = torch.eye(dim)
@@ -199,13 +201,14 @@ def pinv_next(a_s, z):
     inner = 13 * i - torch.matmul(torch.matmul(a_s, z), inner)
     return 1/4*torch.matmul(z, inner)
 
+# needed for landmarking in nystrom, downsamples
 def segmented_means(matrix, m = 2):
     dim3 = matrix.shape[2] #this is the dim we downsample
     pooler = nn.AvgPool2d((math.ceil(dim3/m), 1), ceil_mode = True)
     #print(pooler(matrix))
     return pooler(matrix)
 
-# m must be much smaller than dimension
+# m must be much smaller than dimension, we should probably decide on an m
 def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m = 2):
     # seem to be the right dimensions
     # needs better landmark selection instead of just grabbing the first m
@@ -241,6 +244,12 @@ def nystrom_attn(self, query, key, value, attention_mask=None, head_mask=None, m
     middle = nn.functional.softmax(a_s/(value.size(-1) ** 0.5))
     # true pseudo-inverse is not efficient,
     # working on using iterated method from paper instead of torch
+    try:
+        temp = torch.linalg.pinv(middle)
+    except:
+        print(q_bar)
+        print(k_bar)
+        print(middle)
     inv = torch.linalg.pinv(middle)
     # work-in-progress to use iterated method
     #inv = pinv(a_s)
