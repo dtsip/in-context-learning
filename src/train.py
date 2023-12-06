@@ -17,13 +17,17 @@ from models import build_model
 import wandb
 
 torch.backends.cudnn.benchmark = True
+print_debug_steps = 50
 
-
-def train_step(model, xs, ys, optimizer, loss_func):
+def train_step(model, xs, ys, optimizer, loss_func, step):
     optimizer.zero_grad()
     output = model(xs, ys)
     # print(torch.max(xs))
+    if step % print_debug_steps == 0:
+      print("output: ", output[0])
     loss = loss_func(output, ys)
+    # if loss > 1.5:
+    #   print("LOSS WAS CRAZY: output: ", output[0])
     loss.backward()
     optimizer.step()
     return loss.detach().item(), output.detach()
@@ -37,7 +41,7 @@ def sample_seeds(total_seeds, count):
 
 
 def train(model, args, device):
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.training.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.training.learning_rate)
     curriculum = Curriculum(args.training.curriculum)
 
     starting_step = 0
@@ -86,12 +90,16 @@ def train(model, args, device):
         if "seq" in args.training.task:
             x0 = xs[:, 0, :]
             xs, ys = task.generate_sequence(x0, args.model.n_positions)
+            if i % print_debug_steps == 0:
+              print("x0: ", x0[0])
+              print("xs: ", xs[0])
+              print("ys: ", ys[0])
         else:
             ys = task.evaluate(xs)
 
         loss_func = task.get_training_metric()
 
-        loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func)
+        loss, output = train_step(model, xs.to(device), ys.to(device), optimizer, loss_func, i)
 
         point_wise_tags = list(range(curriculum.n_points))
         point_wise_loss_func = task.get_metric()
@@ -156,8 +164,7 @@ def main(args):
             resume=True,
         )
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+    device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
     model = build_model(args.model, "seq" in args.training.task)
     model.to(device)
     model.train()

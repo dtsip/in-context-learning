@@ -401,10 +401,13 @@ class SlidingWindowSequentialTasks(Task):
         # f 0 -> i 3, f 1 -> i 2, f 2  -> i 1,  f 3 -> i 0
         for t in range(1, sequence_length):
             x = torch.sum(torch.stack([f(xs[:, t - (i+1), :]) if t - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
-            # i that was not affected by a functio
-            xs[:, t, :] = x
+            # i that was not affected by a function
+            x_normalized = x / x.norm(p=2, dim=-1, keepdim=True)
+            xs[:, t, :] = x_normalized
             ys[:, t - 1, :] = xs[:, t, :]
-        ys[:, -1, :] = torch.sum(torch.stack([f(xs[:, sequence_length - (i+1), :]) if sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
+        next_x = torch.sum(torch.stack([f(xs[:, sequence_length - (i+1), :]) if sequence_length - (i+1) >= 0 else torch.zeros_like(xs[:, 0, :]) for i, f in enumerate(self.functions)]), dim=0)
+        next_x_normalized = next_x / next_x.norm(p=2, dim=-1, keepdim=True)
+        ys[:, -1, :] = next_x_normalized
 
         return xs, ys
     
@@ -451,11 +454,18 @@ class RecursiveLinearFunction(Task):
 
         w = torch.randn((n_dims, n_dims))
 
-        eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
+        eigenvalues, eigenvectors = torch.linalg.eig(w)
+        eigenvalues = eigenvalues.real
+        eigenvectors = eigenvectors.real
+        # NOTE: torch.linalg.eig returns complex eigenvalues, so we need to take the real part
+        clamped_eigenvalues = torch.clamp(eigenvalues, max=1.0, min=-1.0)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
-        self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
+        self.w = clamped_matrix
+        # self.w = torch.eye(n_dims)
+
+        self.b = torch.randn((1))
+        # self.b = 1
 
         # print(torch.eig(self.w))
 
@@ -481,14 +491,15 @@ class RecursiveLinearFunction(Task):
         # Iterate over the sequence
         for t in range(1, sequence_length):
             # Multiply the previous step by the matrix W
-            xs[:, t, :] = torch.matmul(xs[:, t-1, :], W)
+            xs[:, t, :] = torch.matmul(xs[:, t-1, :], W) + self.b
+            # xs_normalized = xs[:, t, :] / torch.norm(xs[:, t, :], 2, -1, True)
             # Copy the new step to ys
-            ys[:, t - 1, :] = xs[:, t, :]
+            ys[:, t-1, :] = xs[:, t, :] 
 
         # Update the last element in ys
-        ys[:, -1, :] = torch.matmul(xs[:, -1, :], W)
+        ys[:, sequence_length-1, :] = (torch.matmul(xs[:, -1, :], W) + self.b)
+        x_means = torch.norm(xs, 2, -1, True)
         return xs, ys
-        
 
     def generate_functions(self):
         functions = []
@@ -522,7 +533,7 @@ class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
         w = torch.randn((n_dims, n_dims))
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.0, min=-1.0)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
         self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
