@@ -3,3 +3,6 @@ __pycache__
 models.zip
 models
 /src/plots
+
+.vscode/
+.vsls.json
