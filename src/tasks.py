@@ -522,7 +522,7 @@ class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
         w = torch.randn((n_dims, n_dims))
 
         eigenvalues, eigenvectors = torch.eig(w, eigenvectors=True)
-        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1.5, min=-1.5)
+        clamped_eigenvalues = torch.clamp(eigenvalues[:, 0], max=1, min=-1)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
         self.w = torch.clamp(clamped_matrix, max=0.5, min=-0.5)
