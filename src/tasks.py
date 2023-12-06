@@ -1,3 +1,4 @@
+
 import math
 
 import torch
@@ -461,11 +462,11 @@ class RecursiveLinearFunction(Task):
         clamped_eigenvalues = torch.clamp(eigenvalues, max=1.0, min=-1.0)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
-        self.w = clamped_matrix
-        # self.w = torch.eye(n_dims)
+        # self.w = clamped_matrix
+        self.w = torch.eye(n_dims)
 
-        self.b = torch.randn((1))
-        # self.b = 1
+        # self.b = torch.randn((1))
+        self.b = 1
 
         # print(torch.eig(self.w))
 
@@ -526,7 +527,7 @@ class RecursiveLinearFunction(Task):
 class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
-
+        #use seq_req_linear.yaml
         self.n_dims = n_dims
         self.scale = 1 / n_dims
 
@@ -574,3 +575,4 @@ def get_seq_task_sampler(
     else:
         print("Unknown task")
         raise NotImplementedError
+    
