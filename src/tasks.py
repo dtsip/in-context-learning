@@ -515,7 +515,7 @@ class RecursiveLinearFunction(Task):
 class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
-
+        #use seq_req_linear.yaml
         self.n_dims = n_dims
         self.scale = 1 / n_dims
 
