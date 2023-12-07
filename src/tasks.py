@@ -38,6 +38,16 @@ def normalized_mean_l2_error(ys_pred, ys):
     normalized_ys_pred = ys_pred / ys.norm(dim=2, keepdim=True)
     return (normalized_ys - normalized_ys_pred).norm(dim=2).mean()
 
+def normalized_squared_l2_error(ys_pred, ys):
+    normalized_ys = ys / ys.norm(dim=2, keepdim=True)
+    normalized_ys_pred = ys_pred / ys.norm(dim=2, keepdim=True)
+    return (normalized_ys - normalized_ys_pred).norm(dim=2).square()
+
+def normalized_mean_squared_l2_error(ys_pred, ys):
+    normalized_ys = ys / ys.norm(dim=2, keepdim=True)
+    normalized_ys_pred = ys_pred / ys.norm(dim=2, keepdim=True)
+    return (normalized_ys - normalized_ys_pred).norm(dim=2).square().mean()
+
 sigmoid = torch.nn.Sigmoid()
 bce_loss = torch.nn.BCELoss()
 
@@ -429,7 +439,8 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
     def generate_functions(self):
         functions = []
         for i in range(self.sliding_window):
-            functions.append(lambda xs_b: (torch.nn.functional.relu(xs_b @ self.ws[f"w{i},{0}"].to(xs_b.device)) @ self.ws[f"w{i},{1}"].to(xs_b.device)) * math.sqrt(2 / self.hidden_layer_size) * self.scale)
+            # functions.append(lambda xs_b: (torch.nn.functional.relu(xs_b @ self.ws[f"w{i},{0}"].to(xs_b.device)) @ self.ws[f"w{i},{1}"].to(xs_b.device)) * math.sqrt(2 / self.hidden_layer_size) * self.scale)
+            functions.append(lambda xs_b: (torch.nn.functional.relu(xs_b @ self.ws[f"w{i},{0}"].to(xs_b.device)) @ self.ws[f"w{i},{1}"].to(xs_b.device)) * math.sqrt(2 / self.hidden_layer_size))
         return functions
 
     @staticmethod 
@@ -463,7 +474,6 @@ class RecursiveLinearFunction(Task):
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
         self.w = clamped_matrix
-        # self.w = torch.eye(n_dims) * 1
 
         # self.b = torch.randn((1))
         # self.b = torch.randn((n_dims))
@@ -556,11 +566,11 @@ class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
     
     @staticmethod
     def get_metric():
-        return normalized_l2_error
+        return normalized_squared_l2_error
 
     @staticmethod
     def get_training_metric():
-        return normalized_mean_l2_error
+        return normalized_mean_squared_l2_error
 
 def get_seq_task_sampler(
     task_name, n_dims, batch_size, pool_dict=None, num_tasks=None, **kwargs
