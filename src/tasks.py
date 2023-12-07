@@ -565,7 +565,6 @@ class SequentialRecursiveLinearFunction(SlidingWindowSequentialTasks):
 def get_seq_task_sampler(
     task_name, n_dims, batch_size, pool_dict=None, num_tasks=None, **kwargs
 ):
-    # TODO: add functionality for pool_dict, but for now assume pool_dict=None
     task_names_to_classes = {
         "seq_relu_2nn": Relu2nnRegression,
     }
