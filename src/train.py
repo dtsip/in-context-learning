@@ -23,8 +23,8 @@ def train_step(model, xs, ys, optimizer, loss_func, step):
     optimizer.zero_grad()
     output = model(xs, ys)
     # print(torch.max(xs))
-    if step % print_debug_steps == 0:
-      print("output: ", output[0])
+    # if step % print_debug_steps == 0:
+    #  print("output: ", output[0])
     loss = loss_func(output, ys)
     # if loss > 1.5:
     #   print("LOSS WAS CRAZY: output: ", output[0])
@@ -90,10 +90,10 @@ def train(model, args, device):
         if "seq" in args.training.task:
             x0 = xs[:, 0, :]
             xs, ys = task.generate_sequence(x0, args.model.n_positions)
-            if i % print_debug_steps == 0:
-              print("x0: ", x0[0])
-              print("xs: ", xs[0])
-              print("ys: ", ys[0])
+            # if i % print_debug_steps == 0:
+            #   print("x0: ", x0[0])
+            #   print("xs: ", xs[0])
+            #   print("ys: ", ys[0])
         else:
             ys = task.evaluate(xs)
 

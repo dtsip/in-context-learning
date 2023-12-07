@@ -416,11 +416,11 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1, hidden_layer_size=100):
         super(SlidingWindowSequentialTasks, self).__init__(n_dims, batch_size, pool_dict, seeds)
 
-        self.sliding_window=5
+        self.sliding_window=2
         # self.sequence_length=20
         
         self.scale = scale
-        self.hidden_layer_size = hidden_layer_size
+        self.hidden_layer_size = n_dims
 
         dims = [(n_dims, hidden_layer_size), (hidden_layer_size, n_dims)]
         self.ws = {f"w{i},{j}" : torch.randn(dims[j]) for i, j in itertools.product(list(range(self.sliding_window + 1)), (range(2)))}
@@ -439,11 +439,11 @@ class RecursiveRelu2nn(SlidingWindowSequentialTasks):
     
     @staticmethod
     def get_metric():
-        return normalized_l2_error
+        return l2_error
 
     @staticmethod
     def get_training_metric():
-        return normalized_mean_l2_error
+        return mean_l2_error
     
 class RecursiveLinearFunction(Task):
     def __init__(self, n_dims, batch_size, pool_dict=None, seeds=None, scale=1):
@@ -459,14 +459,14 @@ class RecursiveLinearFunction(Task):
         eigenvalues = eigenvalues.real
         eigenvectors = eigenvectors.real
         # NOTE: torch.linalg.eig returns complex eigenvalues, so we need to take the real part
-        clamped_eigenvalues = torch.clamp(eigenvalues, max=1.0, min=-1.0)
+        clamped_eigenvalues = torch.clamp(eigenvalues, max=0.8, min=-0.8)
         clamped_matrix = eigenvectors @ torch.diag(clamped_eigenvalues) @ eigenvectors.t()
 
-        # self.w = clamped_matrix
-        self.w = torch.eye(n_dims)
+        self.w = clamped_matrix
+        # self.w = torch.eye(n_dims) * 1
 
         # self.b = torch.randn((1))
-        self.b = 1
+        # self.b = torch.randn((n_dims))
 
         # print(torch.eig(self.w))
 
@@ -492,13 +492,13 @@ class RecursiveLinearFunction(Task):
         # Iterate over the sequence
         for t in range(1, sequence_length):
             # Multiply the previous step by the matrix W
-            xs[:, t, :] = torch.matmul(xs[:, t-1, :], W) + self.b
+            xs[:, t, :] = torch.matmul(xs[:, t-1, :], W) #+ self.b
             # xs_normalized = xs[:, t, :] / torch.norm(xs[:, t, :], 2, -1, True)
             # Copy the new step to ys
             ys[:, t-1, :] = xs[:, t, :] 
 
         # Update the last element in ys
-        ys[:, sequence_length-1, :] = (torch.matmul(xs[:, -1, :], W) + self.b)
+        ys[:, sequence_length-1, :] = (torch.matmul(xs[:, -1, :], W)) # + self.b)
         x_means = torch.norm(xs, 2, -1, True)
         return xs, ys
 
