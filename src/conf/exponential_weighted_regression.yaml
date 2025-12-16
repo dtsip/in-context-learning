@@ -1,0 +1,43 @@
+inherit: 
+    - base.yaml
+
+model:
+    family: gpt2
+    n_dims: 20
+    n_embd: 128
+    n_head: 8
+    n_layer: 4
+    n_positions: 101
+
+training:
+    task: exponential_weighted_regression
+    task_kwargs:
+        rate: 1.0        # exponential distribution rate parameter
+        scale: 1.0
+    data: gaussian
+    data_kwargs: {}
+    curriculum:
+        dims:
+            start: 5
+            end: 20
+            inc: 1
+            interval: 2000
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+    batch_size: 64
+    learning_rate: 0.0001
+    train_steps: 500001
+    save_every_steps: 100
+    keep_every_steps: 10000
+
+out_dir: /content/models/exponential_weighted_regression
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "exponential_weights_experiment"
+    notes: "Training with exponential-distributed weights (non-uniform on hypersphere)"
+    log_every_steps: 100

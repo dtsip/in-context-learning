@@ -1,0 +1,31 @@
+model:
+  family: gpt2
+  n_dims: 20
+  n_embd: 256
+  n_head: 12
+  n_layer: 8
+  n_positions: 101
+
+training:
+  batch_size: 64
+  curriculum:
+    dims:
+      start: 5
+      end: 20
+      inc: 1
+      interval: 2000
+    points:
+      start: 11
+      end: 41
+      inc: 2
+      interval: 2000
+  learning_rate: 0.0001
+  train_steps: 500001
+  data: tstudent         # ví dụ: gaussian, uniform, laplace, tstudent, cauchy, poisson, rayleigh
+  task: linear_regression
+  task_kwargs:
+    w_distribution: ${w_distribution}   # ví dụ: gaussian, uniform, laplace, tstudent, cauchy, poisson, rayleigh
+
+wandb:
+  project: in-context-training
+  name: linear_regression_custom

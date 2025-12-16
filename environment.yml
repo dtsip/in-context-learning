@@ -4,7 +4,7 @@ channels:
   - defaults
 dependencies:
   - pip=21.2.4
-  - python=3.8.12
+  - python=3.9
   - pytorch=1.11.0
   - pip:
     - jupyter==1.0.0

@@ -1,0 +1,36 @@
+inherit: 
+    - base.yaml
+
+model:
+    n_dims: 20
+    n_positions: 101
+
+training:
+    task: mixture_tasks_killer
+    task_kwargs:
+        scale: 1.0
+    data: gaussian
+    data_kwargs: {}
+    curriculum:
+        dims:
+            start: 5
+            end: 20
+            inc: 1
+            interval: 2000
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+    batch_size: 64
+    learning_rate: 0.0001
+    train_steps: 500001
+
+out_dir: ../models/mixture_tasks_killer
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "case4_mixture_tasks"
+    notes: "Case 4: Mixture of Tasks - 50% y=w^T x, 50% y=-w^T x - Averaging Death"
+    log_every_steps: 100

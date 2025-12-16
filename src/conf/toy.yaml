@@ -3,31 +3,42 @@ inherit:
     - wandb.yaml
 
 model:
-    n_dims: 5
-    n_positions: 11
+  family: gpt2
+  n_dims: 20
+  n_embd: 128
+  n_head: 8
+  n_layer: 4
+  n_positions: 101
 
 training:
-    task: linear_regression
-    data: gaussian
-    task_kwargs: {}
-    batch_size: 64
-    learning_rate: 0.0001
-    save_every_steps: 1000
-    keep_every_steps: 100000
-    train_steps: 5001
-    curriculum:
-        dims:
-            start: 5
-            end: 5
-            inc: 1
-            interval: 2000
-        points:
-            start: 11
-            end: 11
-            inc: 2
-            interval: 2000
+  batch_size: 32
+  curriculum:
+    dims:
+      start: 5
+      end: 20
+      inc: 1
+      interval: 2000
+    points:
+      start: 6
+      end: 30
+      inc: 2
+      interval: 2000
+  data: gaussian
+  data_kwargs: {}
+  keep_every_steps: 100000
+  learning_rate: 0.0003
+  num_tasks: null
+  num_training_examples: null
+  resume_id: null
+  save_every_steps: 100
+  task: noisy_linear_regression
+  task_kwargs: {
+    # "compute_gradient": True
+    # "sparsity": 5
+  } 
+  train_steps: 50001
 
-out_dir: ../models/linear_regression
+out_dir: /content/models/sparse_linear_regression
 
 wandb:
-    name: "linear_regression_toy"
+    name: "sparse_linear_regression_standard"

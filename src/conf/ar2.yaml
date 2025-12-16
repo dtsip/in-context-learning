@@ -1,0 +1,15 @@
+defaults:
+  - base
+
+training:
+  data: ar2
+  data_kwargs:
+    rho1: 0.5
+    rho2: 0.3
+    noise_std: 0.1
+  
+  curriculum:
+    points:
+      start: 5
+      end: 40
+      step: 5

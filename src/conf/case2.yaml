@@ -1,0 +1,38 @@
+inherit: 
+    - base.yaml
+
+model:
+    n_dims: 20
+    n_positions: 101
+
+training:
+    task: heavy_tail_noise_killer
+    task_kwargs:
+        noise_type: "t-student"
+        df: 3.0
+        noise_scale: 0.5
+    data: gaussian
+    data_kwargs: {}
+    curriculum:
+        dims:
+            start: 5
+            end: 20
+            inc: 1
+            interval: 2000
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+    batch_size: 64
+    learning_rate: 0.0001
+    train_steps: 500001
+
+out_dir: ../models/heavy_tail_noise_killer
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "case2_heavy_tail_t_student"
+    notes: "Case 2: Heavy-tail noise (t-student df=3, scale=0.5) - OLS Enemy"
+    log_every_steps: 100

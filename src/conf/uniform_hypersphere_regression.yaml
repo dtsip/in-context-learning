@@ -1,0 +1,43 @@
+inherit: 
+    - base.yaml
+
+model:
+    family: gpt2
+    n_dims: 20
+    n_embd: 128
+    n_head: 8
+    n_layer: 4
+    n_positions: 101
+
+training:
+    task: uniform_hypersphere_regression
+    task_kwargs:
+        scale: 1.0
+        normalize: true
+    data: gaussian
+    data_kwargs: {}
+    curriculum:
+        dims:
+            start: 5
+            end: 20
+            inc: 1
+            interval: 2000
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+    batch_size: 64
+    learning_rate: 0.0001
+    train_steps: 500001
+    save_every_steps: 100
+    keep_every_steps: 10000
+
+out_dir: /content/models/linear_regression/uniform_hypersphere_regression
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "uniform_hypersphere_experiment"
+    notes: "Training with weights uniformly distributed on unit hypersphere"
+    log_every_steps: 100

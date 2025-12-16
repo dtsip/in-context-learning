@@ -10,7 +10,15 @@ training:
             inc: 2
             interval: 2000
 
-out_dir: ../models/linear_regression
+# out_dir: ../models/linear_regression
+out_dir: D:\Henry-Projects\ChestXray\data\in-context-learning\models\linear_regression
+
 
 wandb:
-    name: "linear_regression_standard"
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "noisy_linear_regression"
+    notes: "Training with laplace-distributed weights (non-uniform on hypersphere)"
+    log_every_steps: 100
+
+

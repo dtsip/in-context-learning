@@ -185,6 +185,25 @@ def eval_model(
         all_metrics.append(metrics)
 
     metrics = torch.cat(all_metrics, dim=0)
+    # results = aggregate_metrics(metrics)
+
+    # # if prompting_strategy == "standard":
+    # #     grad_alignments = compute_gradient_alignment(model, task_sampler(), xs[0])
+    # #     if grad_alignments is not None:
+    # #         results["gradient_alignment"] = grad_alignments
+    # if prompting_strategy == "standard":
+    #     # sample a single long prefix to compute gradients on (use same data_sampler)
+    #     xs_samp = data_sampler.sample_xs(n_points=min(n_points, 40), b_size=1)[0]
+    #     task = task_sampler()
+    #     try:
+    #         grad_alignments = compute_gradient_alignment(model, task, xs_samp, n_points=min(40, n_points))
+    #         if grad_alignments is not None:
+    #             results["gradient_alignment"] = grad_alignments
+    #     except Exception:
+    #         # best-effort: don't fail whole eval if grad computation crashes
+    #         pass
+    # return results
+    return aggregate_metrics(metrics)
 
     return aggregate_metrics(metrics)
 
@@ -197,6 +216,44 @@ def build_evals(conf):
     task_name = conf.training.task
     data_name = conf.training.data
 
+    # Sanitize kwargs to avoid passing unsupported keys during evaluation
+    data_whitelist = {
+        "gaussian": {"bias", "scale"},
+        "sparse_gaussian": {"k", "bias", "scale"},
+        "ar1": {"rho", "noise_std", "bias", "scale", "compute_gradient"},
+        "vr1": {"ar1_mat", "noise_std", "bias", "scale"},
+        "ar2": {"ar1_coef", "ar2_coef", "noise_std", "bias", "scale"},
+        "vr2": {"ar1_mat", "ar2_mat", "noise_std", "bias", "scale"},
+        "nonstation": {"coef_base", "coef_amplitude", "noise_std", "bias", "scale"},
+        "exponential": {"bias", "scale", "rate"},
+        "laplace": {"bias", "scale", "loc", "laplace_scale"},
+        "gamma": {"bias", "scale", "concentration", "rate"},
+        "beta": {"bias", "scale", "alpha", "beta"},
+        "uniform": {"bias", "scale", "low", "high"},
+    }
+    task_whitelist = {
+        "linear_regression": {"scale", "uniform"},
+        "sparse_linear_regression": {"scale", "sparsity", "valid_coords"},
+        "linear_classification": {"scale", "uniform"},
+        "relu_2nn_regression": {"scale", "hidden_layer_size"},
+        "decision_tree": {"depth"},
+        "noisy_linear_regression": {"scale", "noise_std", "renormalize_ys", "noise_type", "uniform", "w_distribution", "w_kwargs"},
+        "ar1_linear_regression": {"scale", "ar_coef", "noise_std", "compute_gradient"},
+        "uniform_hypersphere_regression": {"scale"},
+        "linear_regression": {"scale", "uniform"},
+        "sparse_linear_regression": {"scale", "sparsity", "valid_coords"},
+        "sparse_regression_killer": {"scale", "k_sparse"},
+        "heavy_tail_noise_killer": {"scale", "noise_type", "df", "noise_scale"},
+        "bounded_support_killer": {"scale", "rate"},
+        "mixture_tasks_killer": {"scale"},
+        "transfer_tradeoff_task": {"scale", "prior_type", "mixture_std"},
+    
+    }
+    original_data_kwargs = conf.training.data_kwargs if hasattr(conf.training, "data_kwargs") else {}
+    original_task_kwargs = conf.training.task_kwargs if hasattr(conf.training, "task_kwargs") else {}
+    cleaned_data_kwargs = {k: v for k, v in (original_data_kwargs or {}).items() if k in data_whitelist.get(data_name, set())}
+    cleaned_task_kwargs = {k: v for k, v in (original_task_kwargs or {}).items() if k in task_whitelist.get(task_name, set())}
+
     base_kwargs = {
         "task_name": task_name,
         "n_dims": n_dims,
@@ -204,19 +261,30 @@ def build_evals(conf):
         "batch_size": batch_size,
         "data_name": data_name,
         "prompting_strategy": "standard",
+        # "data_sampler_kwargs": conf.training.data_kwargs if hasattr(conf.training, "data_kwargs") else {},
+        # "task_sampler_kwargs": conf.training.task_kwargs
+        "data_sampler_kwargs": cleaned_data_kwargs,
+        "task_sampler_kwargs": cleaned_task_kwargs
     }
 
     evaluation_kwargs = {}
 
     evaluation_kwargs["standard"] = {"prompting_strategy": "standard"}
-    if task_name != "linear_regression":
-        if task_name in ["relu_2nn_regression"]:
-            evaluation_kwargs["linear_regression"] = {"task_name": "linear_regression"}
-        for name, kwargs in evaluation_kwargs.items():
-            # allow kwargs to override base_kwargs values
-            evaluation_kwargs[name] = base_kwargs.copy()
-            evaluation_kwargs[name].update(kwargs)
-        return evaluation_kwargs
+    # evaluation_kwargs["gradient"] = {
+    #     "prompting_strategy": "standard",
+    #     # "task_sampler_kwargs": {"compute_gradient": True}
+    # }
+    
+    # task_name =["linear_regression" if task_name == "ar1_linear_regression" else task_name][0]
+    if task_name not in ["linear_regression", "ar1_linear_regression"]:
+        if task_name != "linear_regression":
+            if task_name in ["relu_2nn_regression"]:
+                evaluation_kwargs["linear_regression"] = {"task_name": "linear_regression"}
+            for name, kwargs in evaluation_kwargs.items():
+                # allow kwargs to override base_kwargs values
+                evaluation_kwargs[name] = base_kwargs.copy()
+                evaluation_kwargs[name].update(kwargs)
+            return evaluation_kwargs
 
     for strategy in [
         "random_quadrants",
@@ -254,6 +322,52 @@ def build_evals(conf):
         "task_name": "noisy_linear_regression",
     }
 
+    # Case 1: Scale Mismatch OOD test
+    if conf.training.task == "scale_mismatch_killer":
+        evaluation_kwargs = {}
+        # Standard eval (in-distribution)
+        evaluation_kwargs["standard"] = base_kwargs.copy()
+        # OOD eval: w ~ N(100, 1)
+        ood_kwargs = base_kwargs.copy()
+        ood_kwargs["task_sampler_kwargs"] = dict(base_kwargs.get("task_sampler_kwargs", {}))
+        ood_kwargs["task_sampler_kwargs"]["train_mode"] = False
+        evaluation_kwargs["ood_scale_mismatch"] = ood_kwargs
+        return evaluation_kwargs
+
+    # Case 2: Over-Skeptic OOD test
+    if conf.training.task == "noisy_linear_regression" and conf.training.task_kwargs.get("noise_std", 0) >= 20:
+        evaluation_kwargs = {}
+        # Standard eval (noisy)
+        evaluation_kwargs["standard"] = base_kwargs.copy()
+        # OOD eval: linear regression, no noise
+        ood_kwargs = base_kwargs.copy()
+        ood_kwargs["task_name"] = "linear_regression"
+        ood_kwargs["task_sampler_kwargs"] = {}
+        evaluation_kwargs["ood_clean"] = ood_kwargs
+        return evaluation_kwargs
+    # Case 3: Anti-Sparsity Trap (Train sparse, eval densee)
+    if conf.training.task == "sparse_linear_regression" and conf.training.task_kwargs.get("sparsity", 0) <= 2:
+        evaluation_kwargs = {}
+        evaluation_kwargs = {}
+        # Standard eval (mixed)
+        evaluation_kwargs["standard"] = base_kwargs.copy()
+        # OOD eval: linear regression only
+        ood_kwargs = base_kwargs.copy()
+        ood_kwargs["task_name"] = "linear_regression"
+        ood_kwargs["task_sampler_kwargs"] = {}
+        evaluation_kwargs["ood_linear"] = ood_kwargs
+        return evaluation_kwargs
+    # Case 4: Task Confusion (Train mixed, eval linear)
+    if conf.training.task == "mixture_tasks_killer":
+        evaluation_kwargs = {}
+        # Standard eval (mixed)
+        evaluation_kwargs["standard"] = base_kwargs.copy()
+        # OOD eval: linear regression only
+        ood_kwargs = base_kwargs.copy()
+        ood_kwargs["task_name"] = "linear_regression"
+        ood_kwargs["task_sampler_kwargs"] = {}
+        evaluation_kwargs["ood_linear"] = ood_kwargs
+        return evaluation_kwargs
     for name, kwargs in evaluation_kwargs.items():
         # allow kwargs to override base_kwargs values
         evaluation_kwargs[name] = base_kwargs.copy()
@@ -326,16 +440,33 @@ def conf_to_model_name(conf):
             (3, 2): "Transformer-xs",
             (6, 4): "Transformer-small",
             (12, 8): "Transformer",
+            (4, 8): "Transformer",
         }[(conf.model.n_layer, conf.model.n_head)]
     else:
         return conf.wandb.name
 
-
 def baseline_names(name):
+    """Map internal model names to display names"""
     if "OLS" in name:
         return "Least Squares"
+    
     if name == "averaging":
         return "Averaging"
+        
+    # if "NN_n=" in name:
+    #     k = name.split("n=")[1].split("_")[0]
+    #     return f"{k}-Nearest Neighbors"
+        
+    # if "lasso" in name:
+    #     alpha = name.split("alpha=")[1].split("_")[0]
+    #     return f"Lasso (alpha={alpha})"
+        
+    # if "gd" in name and "adam" in name:
+    #     return "2-layer NN (Adam)"
+        
+    # if "decision_tree" in name:
+    #     depth = name.split("max_depth=")[1]
+    #     return f"Decision Tree ({'unlimited' if depth=='None' else f'max_depth={depth}'})"
     if "NN" in name:
         k = name.split("_")[1].split("=")[1]
         return f"{k}-Nearest Neighbors"
@@ -348,8 +479,25 @@ def baseline_names(name):
         return "Greedy Tree Learning"
     if "xgboost" in name:
         return "XGBoost"
-    return name
+        
+    if "ridge_var_adj" in name:
+        alpha = name.split("alpha=")[1].split("_")[0]
+        ar = name.split("ar=")[1]
+        return f"Ridge Var Adj (alpha={alpha}, ar={ar})"
+        
+    if "ridge_alpha" in name:
+        alpha = name.split("alpha=")[1]
+        return f"Ridge (alpha={alpha})"
+        
+    if "feasible_gls" in name:
+        ar = name.split("ar=")[1]
+        return "Feasible GLS" if ar=='est' else f"Feasible GLS (ar={ar})"
+        
+    if "gls_ar" in name:
+        ar = name.split("ar=")[1]
+        return f"GLS (ar={ar})"
 
+    return name
 
 def read_run_dir(run_dir):
     all_runs = {}
@@ -357,7 +505,11 @@ def read_run_dir(run_dir):
         task_dir = os.path.join(run_dir, task)
         for run_id in os.listdir(task_dir):
             run_path = os.path.join(task_dir, run_id)
-            _, conf = get_model_from_run(run_path, only_conf=True)
+            try:
+                _, conf = get_model_from_run(run_path, only_conf=True)
+            except FileNotFoundError:
+                print(f"Skipping run {run_id} - config.yaml not found")
+                continue
             params = {}
             params["run_id"] = run_id
             params["task"] = task
@@ -389,6 +541,90 @@ def read_run_dir(run_dir):
     assert len(df) == len(df.run_name.unique())
     return df
 
+# Figure 3 and 4:
+# def compute_gradient_alignment(model, task, xs, n_points=40):
+
+#     device = next(model.parameters()).device
+#     # ground-truth weight for this task (take first in batch)
+#     w = task.w_b[0, :, 0].to(device)
+
+#     alignments = []
+#     max_points = min(n_points, xs.shape[0])
+
+#     for k in range(max_points):
+#         # Context up to k
+#         ctx_xs = xs[:k].unsqueeze(0).to(device)
+#         if k > 0:
+#             ctx_ys = task.evaluate(ctx_xs.detach().cpu()).to(device)
+#         else:
+#             ctx_ys = torch.zeros(1, 0, device=device)
+
+#         # Random query direction normalized and scaled to match data norm
+#         direction = torch.randn_like(w)
+#         direction = direction / (direction.norm() + 1e-8)
+#         scale = xs[k].norm() if k < xs.shape[0] else xs[-1].norm()
+#         x_query = (direction * (scale + 1e-8)).detach().clone().requires_grad_(True)
+#         print("ctx_ys.shape:", ctx_ys.shape)
+#         print("ys_with_dummy.shape:", ys_with_dummy.shape)
+#         xs_with_query = torch.cat([ctx_xs, x_query.view(1, 1, -1)], dim=1)
+#         ys_with_dummy = torch.cat(
+#             [ctx_ys, torch.zeros(ctx_ys.size(0), 1, device=device)],
+#             dim=1
+#         )
+
+#         with torch.enable_grad():
+#             pred = model(xs_with_query, ys_with_dummy, inds=[k])
+#             grad = torch.autograd.grad(pred.sum(), x_query)[0]
+
+#         cos_sim = torch.dot(grad, w) / (grad.norm() * w.norm() + 1e-8)
+#         alignments.append(float(cos_sim.detach().cpu()))
+
+#     return alignments
+def compute_gradient_alignment(model, task, xs, n_points=40):
+    """
+    Compute cosine similarity between model gradient (w.r.t. query input) and
+    the true task weight w. xs: (n_points, d) single sample (no batch dim).
+    Returns list of length <= n_points with float cosines.
+    """
+    device = "cuda" if torch.cuda.is_available() and next(model.parameters()).is_cuda else "cpu"
+    model = model.to(device).eval()
+
+    # get ground-truth weight if available
+    if not hasattr(task, "w_b"):
+        return None
+    w = task.w_b[0, :, 0].to(device)
+
+    alignments = []
+    max_k = min(n_points, xs.shape[0])
+    for k in range(max_k):
+        # context (0..k-1)
+        ctx_xs = xs[:k].unsqueeze(0).to(device)  # (1, k, d)
+        if k > 0:
+            ctx_ys = task.evaluate(ctx_xs.detach().cpu()).to(device)
+        else:
+            ctx_ys = torch.zeros(1, 0, device=device)
+
+        # random direction scaled to typical norm
+        direction = torch.randn_like(w, device=device)
+        direction = direction / (direction.norm() + 1e-8)
+        scale = xs[k].norm() if k < xs.shape[0] else xs[-1].norm()
+        x_query = (direction * (scale + 1e-8)).detach().clone().requires_grad_(True).view(1, 1, -1).to(device)
+
+        xs_with_query = torch.cat([ctx_xs, x_query], dim=1)
+        ys_with_dummy = torch.cat([ctx_ys, torch.zeros(1, 1, device=device)], dim=1)
+
+        with torch.enable_grad():
+            pred = model(xs_with_query, ys_with_dummy, inds=[k])
+            # pred could be tensor with shape (1, m) or scalar-like; sum to scalar
+            loss_term = pred.sum()
+            grad = torch.autograd.grad(loss_term, x_query, retain_graph=False, create_graph=False)[0].view(-1)
+
+        # cosine similarity between grad and w
+        denom = (grad.norm() * w.norm() + 1e-8)
+        cos_sim = float(torch.dot(grad, w).cpu() / denom.cpu())
+        alignments.append(cos_sim)
+
+    return alignments
 if __name__ == "__main__":
     run_dir = sys.argv[1]
     for task in os.listdir(run_dir):

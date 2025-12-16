@@ -1,5 +1,5 @@
 wandb:
     project: in-context-training
-    entity: your-entity
+    entity: in-context  # Change to your W&B username/entity that you have access to
     notes:
     log_every_steps: 100

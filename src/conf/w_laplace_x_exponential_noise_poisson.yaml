@@ -1,0 +1,72 @@
+inherit:
+  - models/standard.yaml
+  - wandb.yaml
+
+model:
+  family: gpt2
+  n_dims: 20
+  n_embd: 128
+  n_head: 8
+  n_layer: 4
+  n_positions: 101
+
+training:
+  batch_size: 64
+  curriculum:
+    dims:
+      start: 5
+      end: 20
+      inc: 1
+      interval: 2000
+    points:
+      start: 11
+      end: 41
+      inc: 2
+      interval: 2000
+
+  # One of: gaussian, sparse_gaussian, ar1, vr1, ar2, vr2, nonstation
+  data: exponential
+
+  # Data kwargs:
+  # - When data == 'sparse_gaussian': you may set 'k' (number of non-zero coords).
+  # - For other data values: any 'k' key will be ignored automatically.
+  data_kwargs: {
+    # k: 8        # only when data: sparse_gaussian
+    # scale: 1.0  # optional for many samplers
+  }
+
+  # Task: choose a base task
+  # One of: linear_regression, sparse_linear_regression, linear_classification,
+  #         relu_2nn_regression, decision_tree, noisy_linear_regression,
+  #         ar1_linear_regression, ar2_linear_regression, non_stationary_linear_regression,
+  #         uniform_hypersphere_regression
+  task: wlaplace_noisypoisson
+
+  # Task kwargs:
+  # - When task == 'sparse_linear_regression': you may set 'sparsity'.
+  # - For other tasks: any 'sparsity' key will be ignored automatically.
+  task_kwargs: {
+    # sparsity: 5  # only when task: sparse_linear_regression
+    # noise_std: 2.0      # e.g., for noisy_linear_regression
+    # renormalize_ys: false
+    # noise_type: normal
+  }
+
+  learning_rate: 0.0001
+  keep_every_steps: 100000
+  num_tasks: null
+  num_training_examples: null
+  resume_id: null
+  save_every_steps: 100
+  train_steps: 500001
+
+out_dir: /content/models/linear_regression/uniform_hypersphere_regression
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "laplace_weights_experiment"
+    notes: "Training with laplace-distributed weights (non-uniform on hypersphere)"
+    log_every_steps: 100
+
+

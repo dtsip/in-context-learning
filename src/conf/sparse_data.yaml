@@ -1,0 +1,43 @@
+inherit: 
+    - base.yaml
+
+model:
+    family: gpt2
+    n_dims: 20     # Total input dimensions
+    n_embd: 128    # Embedding dimension
+    n_head: 8      # Number of attention heads
+    n_layer: 4     # Number of transformer layers
+    n_positions: 100 # Max sequence length
+
+training:
+    task: linear_regression  # Using standard linear regression task
+    data: sparse_gaussian    # Using sparse Gaussian sampler
+    task_kwargs: {}         # No special task args needed
+    data_kwargs:
+        k: 5               # Only 5 non-zero elements per input vector
+        scale: 1.0        # Scale factor for non-zero values
+    
+    batch_size: 32
+    curriculum:
+        dims:
+            start: 20     # Start with full dimensions
+            end: 20       # Keep dimensions fixed
+            inc: 0
+            interval: 2000
+        points:
+            start: 11     # Start with 11 context points
+            end: 41       # End with 41 context points
+            inc: 2        # Increment by 2
+            interval: 2000 # Every 2000 steps
+    
+    learning_rate: 0.0003
+    train_steps: 50001
+    save_every_steps: 100
+    keep_every_steps: 10000
+
+out_dir: /content/models/linear_regression
+
+wandb:
+    project: in-context-training
+    name: sparse_data_experiment
+    notes: "Training with sparse input data (k=5 non-zero elements)"

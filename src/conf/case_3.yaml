@@ -1,0 +1,41 @@
+inherit: 
+    - base.yaml
+
+model:
+    n_dims: 20
+    n_positions: 101
+
+training:
+    task: bounded_support_killer
+    task_kwargs:
+        rate: 1.0
+        scale: 1.0
+    # Use positive-only input distribution
+    data: uniform 
+    data_kwargs: {}
+    # data: exponential
+    # data_kwargs:
+    #     rate: 1.0
+    curriculum:
+        dims:
+            start: 5
+            end: 20
+            inc: 1
+            interval: 2000
+        points:
+            start: 11
+            end: 41
+            inc: 2
+            interval: 2000
+    batch_size: 64
+    learning_rate: 0.0001
+    train_steps: 500001
+
+out_dir: ../models/bounded_support_killer
+
+wandb:
+    project: "in-context-training"
+    entity: "hai-trinh220970-ho-chi-minh-city-university-of-technology"
+    name: "case3_bounded_support"
+    notes: "Case 3: Bounded Support - w~Exp(1), x~Exp(1) - Sign Constraint"
+    log_every_steps: 100
